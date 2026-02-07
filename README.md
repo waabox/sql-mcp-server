@@ -1,4 +1,4 @@
-![CI](https://github.com/waabox/sql-mcp-server/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/waabox/sql-mcp-server/actions/workflows/ci.yml/badge.svg) ![Java](https://img.shields.io/badge/Java-21-blue.svg) ![Maven](https://img.shields.io/badge/Maven-3.9-orange.svg) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE) ![Docker Image](https://img.shields.io/badge/docker-ready-blue) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-brightgreen)
 
 # SQL MCP Server
 
