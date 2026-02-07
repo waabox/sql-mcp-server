@@ -291,7 +291,7 @@ The integration tests spawn the MCP server as a subprocess and communicate via S
 - Query execution (SELECT, JOIN, aggregates, row limits)
 - Safety guards (blocks INSERT, DELETE, DROP)
 - Query explanation (EXPLAIN, ANALYZE, JSON format)
-- Cross-database isolation
+- **Cross-database operations**: Tests switch between `ecommerce` and `hr` connections in the same session, verifying database isolation (tables from one DB don't appear in another) and correct query routing across multiple databases
 
 **Key test example:**
 
