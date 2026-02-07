@@ -38,6 +38,7 @@ sql-mcp:
 
 Edit `~/.config/claude/claude_desktop_config.json`:
 
+**Local (STDIO):**
 ```json
 {
   "mcpServers": {
@@ -48,6 +49,18 @@ Edit `~/.config/claude/claude_desktop_config.json`:
         "/path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar",
         "--spring.config.location=/path/to/application.yml"
       ]
+    }
+  }
+}
+```
+
+**Remote (HTTP/SSE)** - when deployed on a server:
+```json
+{
+  "mcpServers": {
+    "sql": {
+      "url": "http://sql-mcp.example.com/sse",
+      "transport": "sse"
     }
   }
 }
