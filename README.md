@@ -95,6 +95,50 @@ Ask Claude: *"List all tables in the local database"*
 }
 ```
 
+---
+
+Ask Claude: *"Show me the top 5 users by order count"*
+
+**Tool call (`execute_query`):**
+```json
+{
+  "connection": "local",
+  "query": "SELECT u.id, u.name, COUNT(o.id) as order_count FROM users u LEFT JOIN orders o ON o.user_id = u.id GROUP BY u.id, u.name ORDER BY order_count DESC LIMIT 5",
+  "limit": 5
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `connection` | string | Yes | Connection profile name from `application.yml` |
+| `query` | string | Yes | SQL SELECT query to execute |
+| `limit` | integer | No | Max rows to return (default: 1000) |
+
+**Response:**
+```json
+{
+  "columns": [
+    { "name": "id", "type": "int8" },
+    { "name": "name", "type": "varchar" },
+    { "name": "order_count", "type": "int8" }
+  ],
+  "rows": [
+    { "id": 42, "name": "Alice", "order_count": 127 },
+    { "id": 17, "name": "Bob", "order_count": 98 },
+    { "id": 8, "name": "Carol", "order_count": 84 }
+  ],
+  "rowCount": 3,
+  "executionTimeMs": 45
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `columns` | Column metadata (name and SQL type) |
+| `rows` | Result rows as JSON objects |
+| `rowCount` | Number of rows returned |
+| `executionTimeMs` | Query execution time in milliseconds |
+
 ## Supported Databases
 
 | Database       | Status    |
