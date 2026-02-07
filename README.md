@@ -244,7 +244,79 @@ See [docs/kubernetes.md](docs/kubernetes.md) for full Kubernetes manifests and H
 ./mvnw test
 ```
 
-Integration tests use Testcontainers with PostgreSQL.
+### Integration Test Architecture
+
+The integration tests spawn the MCP server as a subprocess and communicate via STDIO using the **Spring AI MCP Client** (`spring-ai-mcp`).
+
+**Setup:**
+1. Testcontainers starts a PostgreSQL 16 container
+2. Two databases are created: `ecommerce_db` and `hr_db`
+3. Each database is seeded with realistic schema and data
+4. A temporary `application.yml` is generated with dynamic port mappings
+5. The MCP server JAR is launched as a subprocess
+6. `McpSyncClient` connects via `StdioClientTransport`
+
+```
+┌─────────────────┐      STDIO       ┌─────────────────┐
+│   Test (JUnit)  │◄───────────────►│  MCP Server     │
+│   McpSyncClient │                  │  (subprocess)   │
+└─────────────────┘                  └────────┬────────┘
+                                              │
+                                              ▼
+                                     ┌─────────────────┐
+                                     │  PostgreSQL     │
+                                     │  (Testcontainer)│
+                                     ├─────────────────┤
+                                     │ ecommerce_db    │
+                                     │ - products      │
+                                     │ - orders        │
+                                     │ - customers     │
+                                     ├─────────────────┤
+                                     │ hr_db           │
+                                     │ - employees     │
+                                     │ - departments   │
+                                     └─────────────────┘
+```
+
+**Test databases:**
+
+| Database | Tables | Purpose |
+|----------|--------|---------|
+| `ecommerce_db` | categories, products, customers, orders, order_items | E-commerce domain with FKs |
+| `hr_db` | departments, employees | HR domain with self-referencing FK |
+
+**Test coverage (21 tests):**
+- Connection management (list, test, unknown connection)
+- Schema introspection (list tables, describe, foreign keys, sample rows)
+- Query execution (SELECT, JOIN, aggregates, row limits)
+- Safety guards (blocks INSERT, DELETE, DROP)
+- Query explanation (EXPLAIN, ANALYZE, JSON format)
+- Cross-database isolation
+
+**Key test example:**
+
+```java
+@Test
+void whenExecutingJoinQuery_shouldReturnResults() throws Exception {
+    String query = """
+        SELECT p.name as product, c.name as category
+        FROM products p
+        JOIN categories c ON p.category_id = c.id
+        WHERE c.name = 'Electronics'
+        """;
+
+    Map<String, Object> args = Map.of(
+        "connection", "ecommerce",
+        "query", query
+    );
+
+    CallToolResult result = mcpClient.callTool(
+        new CallToolRequest("execute_query", args)
+    );
+
+    // Parse and assert response...
+}
+```
 
 ## Roadmap
 
