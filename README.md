@@ -66,6 +66,47 @@ Edit `~/.config/claude/claude_desktop_config.json`:
 }
 ```
 
+### 3b. Add to Claude Code
+
+**Local (STDIO)** - add via CLI:
+```bash
+claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar \
+  --spring.config.location=/path/to/application.yml
+```
+
+Or create `.mcp.json` in your project root:
+```json
+{
+  "mcpServers": {
+    "sql": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "/path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar",
+        "--spring.config.location=/path/to/application.yml"
+      ]
+    }
+  }
+}
+```
+
+**Remote (HTTP/SSE)** - when deployed on a server:
+```bash
+claude mcp add sql --transport sse http://sql-mcp.example.com/sse
+```
+
+Or in `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "sql": {
+      "url": "http://sql-mcp.example.com/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
 ### 4. Try it
 
 Ask Claude: *"List all tables in the local database"*
