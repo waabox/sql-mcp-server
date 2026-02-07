@@ -258,7 +258,7 @@ The integration tests spawn the MCP server as a subprocess and communicate via S
 
 ```
 ┌─────────────────┐      STDIO       ┌─────────────────┐
-│   Test (JUnit)  │◄───────────────►│  MCP Server     │
+│   Test (JUnit)  │◄─────────────── ►│  MCP Server     │
 │   McpSyncClient │                  │  (subprocess)   │
 └─────────────────┘                  └────────┬────────┘
                                               │
