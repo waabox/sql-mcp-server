@@ -34,41 +34,9 @@ sql-mcp:
       read-only: true
 ```
 
-### 3. Add to Claude Desktop
-
-Edit `~/.config/claude/claude_desktop_config.json`:
+### 3. Add to Claude Code
 
 **Local (STDIO):**
-```json
-{
-  "mcpServers": {
-    "sql": {
-      "command": "java",
-      "args": [
-        "-jar",
-        "/path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar",
-        "--spring.config.location=/path/to/application.yml"
-      ]
-    }
-  }
-}
-```
-
-**Remote (HTTP/SSE)** - when deployed on a server:
-```json
-{
-  "mcpServers": {
-    "sql": {
-      "url": "http://sql-mcp.example.com/sse",
-      "transport": "sse"
-    }
-  }
-}
-```
-
-### 3b. Add to Claude Code
-
-**Local (STDIO)** - add via CLI:
 ```bash
 claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar \
   --spring.config.location=/path/to/application.yml
