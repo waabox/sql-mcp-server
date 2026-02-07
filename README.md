@@ -429,6 +429,31 @@ resources:
     memory: 512Mi
     cpu: 500m
 
+# Health check configuration
+healthCheck:
+  path: /health
+  port: 8080
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
 config:
   transport: http
   connections:
@@ -468,7 +493,9 @@ secrets:
 
 ## Claude Desktop Integration
 
-Add to `~/.config/claude/claude_desktop_config.json` (macOS/Linux) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+### Local Mode (STDIO)
+
+For local development, add to `~/.config/claude/claude_desktop_config.json` (macOS/Linux) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -488,6 +515,36 @@ Add to `~/.config/claude/claude_desktop_config.json` (macOS/Linux) or `%APPDATA%
   }
 }
 ```
+
+### Remote Mode (HTTP/SSE)
+
+When connecting to a deployed SQL MCP server running in HTTP mode:
+
+```json
+{
+  "mcpServers": {
+    "sql": {
+      "url": "http://sql-mcp.example.com/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+For internal Kubernetes deployments:
+
+```json
+{
+  "mcpServers": {
+    "sql": {
+      "url": "http://sql-mcp-server.mcp.svc.cluster.local/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+**Note:** When using HTTP/SSE transport, ensure the server is accessible from the client and proper authentication/TLS is configured for production environments.
 
 ## MCP Tools Reference
 
