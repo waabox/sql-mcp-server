@@ -1,0 +1,57 @@
+# SQL MCP Server Configuration
+
+spring:
+  application:
+    name: sql-mcp-server
+  main:
+    banner-mode: off
+    log-startup-info: false
+
+  # Disable auto-configuration for DataSource (we manage connections manually)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+# SQL MCP Server Configuration
+sql-mcp:
+  # Transport mode: 'stdio' (default) for CLI, 'http' for server deployment
+  transport: stdio
+
+  # Connection profiles
+  # Example configuration (override in application-local.yml or environment variables):
+  # connections:
+  #   - name: "local-postgres"
+  #     type: POSTGRESQL
+  #     host: "localhost"
+  #     port: 5432
+  #     database: "mydb"
+  #     username: "${DB_USER}"
+  #     password: "${DB_PASS}"
+  #     schema: "public"
+  #     read-only: true
+  connections: []
+
+  # Query execution settings
+  query:
+    default-timeout-ms: 30000
+    default-row-limit: 1000
+    max-row-limit: 10000
+
+  # Table access control
+  tables:
+    allow-list: []
+    deny-list:
+      - "pg_*"
+      - "information_schema.*"
+
+# Server configuration (for HTTP transport mode)
+server:
+  port: 8080
+
+# Logging configuration
+logging:
+  level:
+    root: WARN
+    co.fanki.sqlmcp: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

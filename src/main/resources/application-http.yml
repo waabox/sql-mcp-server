@@ -1,0 +1,15 @@
+# HTTP Transport Configuration for Server Deployment
+# Activate with: --spring.profiles.active=http
+
+sql-mcp:
+  transport: http
+
+# Server settings
+server:
+  port: ${PORT:8080}
+
+# Enable more verbose logging for HTTP mode
+logging:
+  level:
+    co.fanki.sqlmcp: DEBUG
+    io.modelcontextprotocol: INFO

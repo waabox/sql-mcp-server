@@ -1,0 +1,29 @@
+# Test configuration - values are overridden dynamically by Testcontainers
+spring:
+  main:
+    banner-mode: off
+    web-application-type: none
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+logging:
+  level:
+    root: WARN
+    co.fanki.sqlmcp: DEBUG
+    audit.query: DEBUG
+    metrics.query: DEBUG
+
+sql-mcp:
+  transport: stdio
+  query:
+    default-timeout-ms: 10000
+    default-row-limit: 100
+    max-row-limit: 500
+  tables:
+    allow-list: []
+    deny-list:
+      - "pg_*"
+      - "information_schema.*"
+  # Connections are configured dynamically in tests
+  connections: []
