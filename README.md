@@ -1,4 +1,4 @@
-# sql-mcp-server
+# SQL MCP Server
 
 A lightweight MCP server that gives LLMs read-only access to SQL databases.
 Built for analysts, developers, and SREs who want Claude to explore schemas,
