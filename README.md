@@ -1,3 +1,5 @@
+![CI](https://github.com/waabox/sql-mcp-server/actions/workflows/ci.yml/badge.svg)
+
 # SQL MCP Server
 
 A lightweight MCP server that gives LLMs read-only access to SQL databases.
