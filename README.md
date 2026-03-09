@@ -206,6 +206,89 @@ sql-mcp:
       - "credentials"
 ```
 
+### Multiple Database Connections
+
+The server supports connecting to multiple databases simultaneously, even across
+different database engines. Each connection is identified by a unique `name` that
+you reference when calling any MCP tool.
+
+```yaml
+sql-mcp:
+  transport: stdio
+
+  connections:
+    # PostgreSQL production database
+    - name: production
+      type: postgresql
+      host: db.example.com
+      port: 5432
+      database: appdb
+      username: ${PROD_DB_USER}
+      password: ${PROD_DB_PASS}
+      schema: public
+      read-only: true
+
+    # PostgreSQL analytics database
+    - name: analytics
+      type: postgresql
+      host: analytics-db.example.com
+      port: 5432
+      database: analyticsdb
+      username: ${ANALYTICS_DB_USER}
+      password: ${ANALYTICS_DB_PASS}
+      schema: reporting
+      read-only: true
+
+    # MySQL legacy system
+    - name: legacy
+      type: mysql
+      host: legacy-db.internal
+      port: 3306
+      database: legacy_app
+      username: ${LEGACY_DB_USER}
+      password: ${LEGACY_DB_PASS}
+      read-only: true
+
+    # Local SQLite file
+    - name: local-cache
+      type: sqlite
+      database: /data/cache.db
+      read-only: true
+```
+
+#### Connection Properties
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `name` | string | Yes | - | Unique identifier used in tool calls |
+| `type` | string | Yes | - | Database engine: `postgresql`, `mysql`, `mariadb`, `sqlite` |
+| `host` | string | Yes* | - | Database host (*not required for SQLite) |
+| `port` | int | No | Auto | Default: 5432 (PostgreSQL), 3306 (MySQL/MariaDB) |
+| `database` | string | Yes | - | Database name or file path (SQLite) |
+| `username` | string | Yes* | - | Database user (*not required for SQLite) |
+| `password` | string | Yes* | - | Database password (*not required for SQLite) |
+| `schema` | string | No | Engine default | Default schema for queries |
+| `read-only` | boolean | No | `true` | Enforce read-only connections |
+
+#### Using Multiple Connections
+
+Every MCP tool accepts a `connection` parameter to target a specific database:
+
+```
+"List all tables in the analytics database"
+→ list_tables({ "connection": "analytics" })
+
+"Show me orders from the production database"
+→ execute_query({ "connection": "production", "query": "SELECT * FROM orders LIMIT 10" })
+
+"Describe the users table in the legacy MySQL database"
+→ describe_table({ "connection": "legacy", "table": "users" })
+```
+
+Connections are fully isolated — each database maintains its own connection pool
+and queries are routed to the correct engine. You can switch between connections
+freely within the same session.
+
 ### Environment Variables
 
 | Variable | Description | Default |
