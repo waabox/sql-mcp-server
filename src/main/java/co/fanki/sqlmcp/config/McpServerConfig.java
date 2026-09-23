@@ -37,7 +37,7 @@ import java.util.List;
 public class McpServerConfig {
 
     private static final String SERVER_NAME = "sql-mcp-server";
-    private static final String SERVER_VERSION = "1.0.0";
+    private static final String SERVER_VERSION = "1.0.1";
     private static final String MCP_ENDPOINT = "/mcp";
 
     /**
