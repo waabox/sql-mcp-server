@@ -120,8 +120,8 @@ spec:
             - name: config
               mountPath: /app/config
               readOnly: true
-          args:
-            - "--spring.config.location=/app/config/application.yml"
+          # /app/config/application.yml is loaded automatically. Do not use `args:`:
+          # the image entrypoint does not forward them to the application.
           resources:
             requests:
               memory: "256Mi"
