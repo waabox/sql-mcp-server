@@ -24,7 +24,7 @@ Create `application.yml`:
 
 ```yaml
 sql-mcp:
-  transport: stdio
+  transport: stdio   # required for local use; the default is http
   connections:
     - name: local
       type: postgresql
@@ -249,7 +249,7 @@ when you have one.
 
 ```yaml
 sql-mcp:
-  transport: stdio  # or 'http' for server deployment
+  transport: http  # default; use 'stdio' when Claude Code starts the jar locally
 
   connections:
     - name: production
@@ -288,8 +288,6 @@ you reference when calling any MCP tool.
 
 ```yaml
 sql-mcp:
-  transport: stdio
-
   connections:
     # PostgreSQL production database
     - name: production
@@ -381,7 +379,7 @@ docker pull ghcr.io/waabox/sql-mcp-server:v1.0.2   # or :latest
 | Port | `8080` (`SERVER_PORT`) |
 | MCP endpoint | `POST /mcp` (stateless Streamable HTTP) |
 | Health endpoint | `GET /health` → `200 ok`, no authentication |
-| Default transport | `http` (the image sets `SQL_MCP_TRANSPORT=http`) |
+| Default transport | `http` |
 | JVM | `-XX:MaxRAMPercentage=75.0`, override with `JAVA_OPTS` |
 
 ### How configuration works
@@ -420,7 +418,7 @@ Rules to keep in mind:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SQL_MCP_TRANSPORT` | `stdio` (`http` in the image) | `stdio` for local use, `http` for a shared server |
+| `SQL_MCP_TRANSPORT` | `http` | `http` for a shared server, `stdio` when Claude Code starts the jar locally. Before v1.1.0 the default was `stdio` |
 | `SERVER_PORT` | `8080` (http), random (stdio) | HTTP port. In stdio mode it only serves `/health`, so it defaults to a random free port and several Claude sessions never collide |
 | `SQL_MCP_AUTH_TOKEN` | empty | Bearer token required on `/mcp`. Empty means **no authentication** (a warning is logged at startup) |
 | `SQL_MCP_QUERY_DEFAULT_TIMEOUT_MS` | `30000` | Timeout per query when the caller does not set one |
@@ -550,6 +548,13 @@ same token.
 - [ ] Sensitive tables are in the deny list (the query results are sent to the LLM)
 - [ ] `/app/logs` is persisted or shipped, and audit logs are reviewed
 - [ ] Proxy timeouts are longer than `SQL_MCP_QUERY_MAX_TIMEOUT_MS`
+
+### Upgrading to 1.1.0
+
+- The default transport is now `http`. Server deployments no longer need
+  `SQL_MCP_TRANSPORT=http`. Local setups where Claude Code starts the jar must
+  set `transport: stdio` (or `SQL_MCP_TRANSPORT=stdio`), otherwise the server
+  starts an HTTP listener instead of talking over standard input.
 
 ### Upgrading from 0.x
 

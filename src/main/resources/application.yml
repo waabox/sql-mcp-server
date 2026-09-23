@@ -14,8 +14,9 @@ spring:
 
 # SQL MCP Server Configuration
 sql-mcp:
-  # Transport mode: 'stdio' (default) for CLI, 'http' for server deployment
-  transport: stdio
+  # Transport mode: 'http' (default) for server deployment, 'stdio' when
+  # Claude Code starts the server locally as a subprocess
+  transport: http
 
   # Connection profiles
   # Example configuration (override in application-local.yml or environment variables):

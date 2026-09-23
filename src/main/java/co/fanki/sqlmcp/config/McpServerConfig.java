@@ -27,13 +27,13 @@ import java.util.List;
  *
  * <p>Supports two transport modes:
  * <ul>
- *   <li>STDIO (default) - for CLI usage and local development</li>
- *   <li>Streamable HTTP - for server deployment. The server is stateless: every
+ *   <li>STDIO - for local usage, where Claude Code starts the server as a subprocess</li>
+ *   <li>Streamable HTTP (default) - for server deployment. The server is stateless: every
  *       JSON-RPC request is a self-contained POST to {@code /mcp}, so it can run
  *       behind a load balancer with several replicas and no sticky sessions.</li>
  * </ul>
  *
- * <p>Set {@code sql-mcp.transport=http} to enable HTTP mode.
+ * <p>Set {@code sql-mcp.transport=stdio} to enable STDIO mode.
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
@@ -56,7 +56,7 @@ public class McpServerConfig {
     }
 
     // =========================================================================
-    // STDIO Transport Configuration (default)
+    // STDIO Transport Configuration
     // =========================================================================
 
     /**
@@ -66,7 +66,7 @@ public class McpServerConfig {
      * @return the standard input wrapper
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio")
     public EofAwareInputStream stdioInput() {
         return EofAwareInputStream.wrap(System.in);
     }
@@ -79,7 +79,7 @@ public class McpServerConfig {
      * @return the configured STDIO transport provider
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio")
     public StdioServerTransportProvider stdioTransportProvider(
             final ObjectMapper objectMapper,
             final EofAwareInputStream stdioInput) {
@@ -94,7 +94,7 @@ public class McpServerConfig {
      * @return the configured MCP server
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio")
     public McpSyncServer stdioMcpServer(
             final StdioServerTransportProvider transportProvider,
             final List<McpServerFeatures.SyncToolSpecification> tools) {
@@ -122,7 +122,7 @@ public class McpServerConfig {
      * @return the command line runner that blocks until the client disconnects
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio")
     public CommandLineRunner runStdioServer(
             final McpSyncServer server,
             final EofAwareInputStream stdioInput,
@@ -136,7 +136,7 @@ public class McpServerConfig {
     }
 
     // =========================================================================
-    // Streamable HTTP Transport Configuration (for server deployment)
+    // Streamable HTTP Transport Configuration (default, for server deployment)
     // =========================================================================
 
     /**
@@ -146,7 +146,7 @@ public class McpServerConfig {
      * @return the configured Streamable HTTP transport
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
     public WebMvcStatelessServerTransport httpTransport(final ObjectMapper objectMapper) {
         return WebMvcStatelessServerTransport.builder()
                 .objectMapper(objectMapper)
@@ -161,7 +161,7 @@ public class McpServerConfig {
      * @return the router function for handling MCP requests
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
     public RouterFunction<ServerResponse> mcpRouterFunction(final WebMvcStatelessServerTransport transport) {
         return transport.getRouterFunction();
     }
@@ -177,7 +177,7 @@ public class McpServerConfig {
      * @return the configured MCP server
      */
     @Bean
-    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
     public McpStatelessSyncServer httpMcpServer(
             final WebMvcStatelessServerTransport transport,
             final List<McpServerFeatures.SyncToolSpecification> tools) {

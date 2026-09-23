@@ -27,7 +27,7 @@ import java.security.MessageDigest;
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 @Component
-@ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
+@ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
 public class BearerTokenFilter extends OncePerRequestFilter {
 
     private static final Logger LOG = LoggerFactory.getLogger(BearerTokenFilter.class);

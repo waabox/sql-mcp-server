@@ -42,6 +42,7 @@ class StdioLifecycleIntegrationTest {
         configFile = Files.createTempFile("sql-mcp-stdio-", ".yml");
         Files.writeString(configFile, String.format("""
             sql-mcp:
+              transport: stdio
               connections: []
             logging:
               file:

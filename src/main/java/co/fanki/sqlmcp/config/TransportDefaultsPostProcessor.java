@@ -34,7 +34,7 @@ public class TransportDefaultsPostProcessor implements EnvironmentPostProcessor,
     public void postProcessEnvironment(
             final ConfigurableEnvironment environment,
             final SpringApplication application) {
-        String transport = environment.getProperty("sql-mcp.transport", "stdio");
+        String transport = environment.getProperty("sql-mcp.transport", "http");
         if ("stdio".equalsIgnoreCase(transport.strip())) {
             environment.getPropertySources().addLast(
                     new MapPropertySource(PROPERTY_SOURCE_NAME, Map.of("server.port", "0")));
