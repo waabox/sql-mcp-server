@@ -13,8 +13,8 @@ This guide covers deploying sql-mcp-server to Kubernetes clusters.
 Build and push the image:
 
 ```bash
-docker build -t your-registry/sql-mcp-server:v1.0.2 .
-docker push your-registry/sql-mcp-server:v1.0.2
+docker build -t your-registry/sql-mcp-server:v1.1.0 .
+docker push your-registry/sql-mcp-server:v1.1.0
 ```
 
 ## Manifests
@@ -94,7 +94,7 @@ spec:
     spec:
       containers:
         - name: sql-mcp-server
-          image: your-registry/sql-mcp-server:v1.0.2
+          image: your-registry/sql-mcp-server:v1.1.0
           ports:
             - containerPort: 8080
               name: http
@@ -202,7 +202,7 @@ replicaCount: 2
 
 image:
   repository: your-registry/sql-mcp-server
-  tag: v1.0.2
+  tag: v1.1.0
   pullPolicy: IfNotPresent
 
 service:
