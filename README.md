@@ -40,7 +40,7 @@ sql-mcp:
 
 **Local (STDIO):**
 ```bash
-claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar \
+claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.0.0.jar \
   --spring.config.location=/path/to/application.yml
 ```
 
@@ -52,7 +52,7 @@ Or create `.mcp.json` in your project root:
       "command": "java",
       "args": [
         "-jar",
-        "/path/to/sql-mcp-server-1.0.0-SNAPSHOT.jar",
+        "/path/to/sql-mcp-server-1.0.0.jar",
         "--spring.config.location=/path/to/application.yml"
       ]
     }
