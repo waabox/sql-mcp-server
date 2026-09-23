@@ -1,5 +1,7 @@
 package co.fanki.sqlmcp.connection.domain;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 @ConfigurationProperties(prefix = "sql-mcp")
 public class ConnectionProfileRepository {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ConnectionProfileRepository.class);
 
     private final Map<String, ConnectionProfile> profilesByName;
     private List<ConnectionProperties> connections;
@@ -212,12 +216,19 @@ public class ConnectionProfileRepository {
         /**
          * Converts this properties object to a ConnectionProfile.
          *
+         * <p>Business rule: every connection is read-only. A {@code read-only: false}
+         * setting is ignored and reported with a warning.
+         *
          * @return the corresponding ConnectionProfile
          */
         public ConnectionProfile toConnectionProfile() {
+            if (!readOnly) {
+                LOG.warn("Connection '{}' is configured with read-only: false; ignoring it. "
+                        + "All connections are read-only.", name);
+            }
             return ConnectionProfile.create(
                     name, type, host, port, database,
-                    username, password, schema, readOnly
+                    username, password, schema, true
             );
         }
 

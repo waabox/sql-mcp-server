@@ -65,6 +65,7 @@ class McpToolsIntegrationTest {
     private McpSyncClient mcpClient;
     private ObjectMapper objectMapper;
     private Path tempConfigFile;
+    private Path tempLogDir;
 
     @BeforeAll
     void setup() throws Exception {
@@ -76,6 +77,7 @@ class McpToolsIntegrationTest {
         seedHrDatabase();
 
         // Create temporary config file with connection profiles
+        tempLogDir = Files.createTempDirectory("sql-mcp-test-logs-");
         tempConfigFile = createTempConfigFile();
 
         // Start MCP client connected to our server
@@ -203,6 +205,10 @@ class McpToolsIntegrationTest {
                 (2, 5, 1, 54.99),
                 (3, 3, 1, 49.99)
                 """);
+
+            // Table blocked by the deny list
+            stmt.execute("CREATE TABLE secrets (id SERIAL PRIMARY KEY, token TEXT NOT NULL)");
+            stmt.execute("INSERT INTO secrets (token) VALUES ('top-secret')");
         }
     }
 
@@ -294,17 +300,19 @@ class McpToolsIntegrationTest {
                 max-row-limit: 500
               tables:
                 deny-list:
-                  - "pg_*"
-                  - "information_schema.*"
+                  - "secrets"
 
             logging:
+              file:
+                path: %s
               level:
                 root: WARN
             """,
                 ECOMMERCE_CONNECTION, host, port, ECOMMERCE_DB,
                 postgres.getUsername(), postgres.getPassword(),
                 HR_CONNECTION, host, port, HR_DB,
-                postgres.getUsername(), postgres.getPassword()
+                postgres.getUsername(), postgres.getPassword(),
+                tempLogDir.toAbsolutePath()
         );
 
         Path configPath = Files.createTempFile("sql-mcp-test-", ".yml");
@@ -886,6 +894,194 @@ class McpToolsIntegrationTest {
 
             assertFalse(hrTableNames.contains("products"));
             assertFalse(hrTableNames.contains("orders"));
+        }
+    }
+
+    // =========================================================================
+    // Production Safety Tests
+    // =========================================================================
+
+    @Nested
+    @DisplayName("Production Safety")
+    class ProductionSafetyTest {
+
+        private Map<String, Object> query(final String sql) throws Exception {
+            return parseJsonResult(callTool("execute_query", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "query", sql
+            )));
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<Map<String, Object>> rows(final Map<String, Object> response) {
+            return (List<Map<String, Object>>) response.get("rows");
+        }
+
+        @Test
+        void whenExecutingQuery_givenAnyConnection_shouldRunInReadOnlyTransaction() throws Exception {
+            Map<String, Object> response = query("SELECT current_setting('transaction_read_only') AS ro");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals("on", rows(response).get(0).get("ro"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenConfiguredTimeout_shouldApplyServerSideStatementTimeout() throws Exception {
+            Map<String, Object> response = query(
+                    "SELECT current_setting('statement_timeout') AS st, current_setting('lock_timeout') AS lt");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals("10s", rows(response).get(0).get("st"));
+            assertEquals("5s", rows(response).get(0).get("lt"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenQueryExceedingTimeout_shouldBeCancelled() throws Exception {
+            Map<String, Object> response = parseJsonResult(callTool("execute_query", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "query", "SELECT count(*) FROM generate_series(1, 2000000000)",
+                    "timeout", 1000
+            )));
+            assertFalse((Boolean) response.get("success"));
+            // Either the server-side statement_timeout or the JDBC query timeout cancels it.
+            assertTrue(((String) response.get("error")).contains("canceling statement"),
+                    (String) response.get("error"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenSelectForUpdate_shouldReject() throws Exception {
+            assertFalse((Boolean) query("SELECT * FROM products FOR UPDATE").get("success"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenBackendTermination_shouldReject() throws Exception {
+            assertFalse((Boolean) query("SELECT pg_terminate_backend(pg_backend_pid())").get("success"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenWritableCte_shouldReject() throws Exception {
+            assertFalse((Boolean) query(
+                    "WITH d AS (DELETE FROM products RETURNING *) SELECT * FROM d").get("success"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenStringLiteralsWithOrAndKeywords_shouldSucceed() throws Exception {
+            Map<String, Object> response = query(
+                    "SELECT sku FROM products WHERE sku = 'ELEC-001' OR name = 'DELETE me' ORDER BY sku");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals(1, rows(response).size());
+        }
+
+        @Test
+        void whenExecutingQuery_givenUnionAll_shouldSucceed() throws Exception {
+            Map<String, Object> response = query("SELECT id FROM products UNION ALL SELECT id FROM categories");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals(9, rows(response).size());
+        }
+
+        @Test
+        void whenExecutingQuery_givenSystemCatalogs_shouldSucceed() throws Exception {
+            Map<String, Object> response = query("SELECT pid, state FROM pg_stat_activity LIMIT 5");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+        }
+
+        @Test
+        void whenExecutingQuery_givenLiteralWithDoubleDashAndSpaces_shouldReturnItUnchanged() throws Exception {
+            Map<String, Object> response = query("SELECT 'a--b   c' AS v");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals("a--b   c", rows(response).get(0).get("v"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenDuplicateColumnLabels_shouldKeepAllColumnsInOrder() throws Exception {
+            Map<String, Object> response = query(
+                    "SELECT p.id, c.id, p.sku FROM products p JOIN categories c ON c.id = p.category_id "
+                    + "WHERE p.sku = 'BOOK-001'");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            Map<String, Object> row = rows(response).get(0);
+            assertEquals(List.of("id", "id_2", "sku"), List.copyOf(row.keySet()));
+            assertEquals(4, row.get("id"));
+            assertEquals(2, row.get("id_2"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenJsonbValue_shouldReturnJsonText() throws Exception {
+            Map<String, Object> response = query("SELECT '{\"a\": 1}'::jsonb AS j");
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals("{\"a\": 1}", rows(response).get(0).get("j"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenMoreRowsThanLimit_shouldFlagTruncationWithoutCountingAllRows() throws Exception {
+            Map<String, Object> response = parseJsonResult(callTool("execute_query", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "query", "SELECT generate_series(1, 500000000) AS g",
+                    "limit", 3
+            )));
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+            assertEquals(3, rows(response).size());
+            assertEquals(Boolean.TRUE, response.get("truncated"));
+            assertFalse(response.containsKey("totalRowCount"));
+        }
+
+        @Test
+        void whenExecutingQuery_givenDeniedTableInSubquery_shouldReject() throws Exception {
+            Map<String, Object> response = query("SELECT * FROM (SELECT * FROM secrets) s");
+            assertFalse((Boolean) response.get("success"));
+            assertTrue(((String) response.get("error")).contains("secrets"));
+        }
+
+        @Test
+        void whenSamplingRows_givenDeniedTable_shouldReject() throws Exception {
+            CallToolResult result = callTool("sample_rows", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "table", "secrets"
+            ));
+            assertTrue(result.isError());
+            assertFalse(((TextContent) result.content().get(0)).text().contains("top-secret"));
+        }
+
+        @Test
+        void whenDescribingTable_givenDeniedTable_shouldReject() throws Exception {
+            CallToolResult result = callTool("describe_table", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "table", "secrets"
+            ));
+            assertTrue(result.isError());
+        }
+
+        @Test
+        void whenListingTables_givenDeniedTable_shouldHideIt() throws Exception {
+            Map<String, Object> response = parseJsonResult(callTool("list_tables", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "schema", "public"
+            )));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> tables = (List<Map<String, Object>>) response.get("tables");
+            assertTrue(tables.stream().noneMatch(t -> "secrets".equals(t.get("name"))));
+        }
+
+        @Test
+        void whenAnalyzingQuery_givenReadOnlySession_shouldStillWork() throws Exception {
+            Map<String, Object> response = parseJsonResult(callTool("analyze_query", Map.of(
+                    "connection", ECOMMERCE_CONNECTION,
+                    "query", "SELECT * FROM products WHERE price > 30"
+            )));
+            assertTrue((Boolean) response.get("success"), String.valueOf(response.get("error")));
+        }
+
+        @Test
+        void whenExecutingQuery_givenAnyOutcome_shouldWriteAuditLog() throws Exception {
+            String marker = "audit_marker_" + System.nanoTime();
+            query("SELECT 1 AS " + marker);
+            query("DELETE FROM products WHERE sku = '" + marker + "'");
+
+            Path auditLog = tempLogDir.resolve("audit.log");
+            String content = "";
+            for (int i = 0; i < 50 && !(content.contains(marker) && content.contains("VALIDATION_ERROR")); i++) {
+                Thread.sleep(100);
+                content = Files.exists(auditLog) ? Files.readString(auditLog) : "";
+            }
+            assertTrue(content.contains("SELECT 1 AS " + marker), content);
+            assertTrue(content.contains("VALIDATION_ERROR"), content);
         }
     }
 

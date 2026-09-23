@@ -55,7 +55,7 @@ public class ExecuteQueryTool {
                 },
                 "timeout": {
                   "type": "integer",
-                  "description": "Query timeout in milliseconds (default 30000)"
+                  "description": "Query timeout in milliseconds (default from config, capped by max-timeout-ms)"
                 }
               },
               "required": ["connection", "query"]
@@ -106,7 +106,7 @@ public class ExecuteQueryTool {
 
                     // Apply defaults
                     int limit = limitArg != null ? limitArg : queryExecutor.defaultRowLimit();
-                    int timeout = timeoutArg != null ? timeoutArg : 30_000;
+                    int timeout = timeoutArg != null ? timeoutArg : queryExecutor.defaultTimeoutMs();
 
                     try {
                         QueryResult result = queryExecutor.execute(
@@ -129,7 +129,6 @@ public class ExecuteQueryTool {
         // Metadata
         response.put("success", true);
         response.put("rowCount", result.rowCount());
-        response.put("totalRowCount", result.totalRowCount());
         response.put("truncated", result.truncated());
         response.put("executionTimeMs", result.executionTimeMs());
 
@@ -145,9 +144,9 @@ public class ExecuteQueryTool {
         // Truncation warning
         if (result.truncated()) {
             response.put("warning", String.format(
-                    "Results truncated. Showing %d of %d total rows. " +
-                    "Use LIMIT clause or increase limit parameter to control output.",
-                    result.rowCount(), result.totalRowCount()));
+                    "Results truncated at %d rows; more rows exist. " +
+                    "Refine the WHERE clause, aggregate, or increase the limit parameter.",
+                    result.rowCount()));
         }
 
         try {

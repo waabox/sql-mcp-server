@@ -34,15 +34,25 @@ sql-mcp:
   # Query execution settings
   query:
     default-timeout-ms: 30000
+    # Upper bound for the per-call timeout; also applied as the server-side statement timeout
+    max-timeout-ms: 120000
+    # Maximum time a query may wait for a lock before failing
+    lock-timeout-ms: 5000
     default-row-limit: 1000
     max-row-limit: 10000
 
-  # Table access control
+  # Table access control. Patterns support '*'; a pattern without a dot matches
+  # the bare table name in any schema, e.g. "credentials" or "secret.*".
+  # System catalogs (pg_stat_activity, pg_locks, information_schema, ...) are
+  # allowed by default because they are essential for debugging.
   tables:
     allow-list: []
-    deny-list:
-      - "pg_*"
-      - "information_schema.*"
+    deny-list: []
+
+  # HTTP transport only: when set, every request (except /health) must send
+  # "Authorization: Bearer <token>". Leaving it empty runs the server unauthenticated.
+  http:
+    auth-token: ${SQL_MCP_AUTH_TOKEN:}
 
 # Server configuration (for HTTP transport mode)
 server:

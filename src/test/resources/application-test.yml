@@ -22,8 +22,6 @@ sql-mcp:
     max-row-limit: 500
   tables:
     allow-list: []
-    deny-list:
-      - "pg_*"
-      - "information_schema.*"
+    deny-list: []
   # Connections are configured dynamically in tests
   connections: []

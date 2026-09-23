@@ -5,6 +5,10 @@ import co.fanki.sqlmcp.introspection.domain.ForeignKeyMetadata;
 import co.fanki.sqlmcp.introspection.domain.SchemaIntrospector;
 import co.fanki.sqlmcp.introspection.domain.SchemaIntrospector.IntrospectionException;
 import co.fanki.sqlmcp.introspection.domain.TableMetadata;
+import co.fanki.sqlmcp.query.domain.QueryExecutor;
+import co.fanki.sqlmcp.query.domain.QueryExecutor.QueryExecutionException;
+import co.fanki.sqlmcp.query.domain.QueryGuard;
+import co.fanki.sqlmcp.query.domain.QueryResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -23,7 +27,8 @@ import java.util.stream.Collectors;
  * MCP tools for database schema introspection.
  *
  * <p>Provides tools to explore database structure: tables, columns,
- * foreign keys, and sample data.
+ * foreign keys, and sample data. Tables blocked by the allow/deny lists are
+ * hidden from listings and cannot be described or sampled.
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
@@ -34,18 +39,26 @@ public class IntrospectionTools {
     private static final int MAX_SAMPLE_LIMIT = 100;
 
     private final SchemaIntrospector introspector;
+    private final QueryGuard queryGuard;
+    private final QueryExecutor queryExecutor;
     private final ObjectMapper objectMapper;
 
     /**
      * Creates new IntrospectionTools.
      *
      * @param introspector the schema introspector service
+     * @param queryGuard the table access policy
+     * @param queryExecutor the query executor used to sample rows
      * @param objectMapper the JSON object mapper
      */
     public IntrospectionTools(
             final SchemaIntrospector introspector,
+            final QueryGuard queryGuard,
+            final QueryExecutor queryExecutor,
             final ObjectMapper objectMapper) {
         this.introspector = Objects.requireNonNull(introspector);
+        this.queryGuard = Objects.requireNonNull(queryGuard);
+        this.queryExecutor = Objects.requireNonNull(queryExecutor);
         this.objectMapper = Objects.requireNonNull(objectMapper);
     }
 
@@ -100,6 +113,7 @@ public class IntrospectionTools {
                                 connectionName, schemaPattern);
 
                         List<Map<String, Object>> tableList = tables.stream()
+                                .filter(t -> queryGuard.isTableAllowed(t.schema(), t.name()))
                                 .map(this::tableToMap)
                                 .collect(Collectors.toList());
 
@@ -109,7 +123,7 @@ public class IntrospectionTools {
                         );
 
                         return successResult(result);
-                    } catch (IntrospectionException e) {
+                    } catch (IntrospectionException | IllegalArgumentException e) {
                         return errorResult(e.getMessage());
                     }
                 }
@@ -170,6 +184,10 @@ public class IntrospectionTools {
                         return errorResult("Table name is required");
                     }
 
+                    if (!queryGuard.isTableAllowed(schemaName, tableName)) {
+                        return errorResult("Access to table '" + tableName + "' is not allowed");
+                    }
+
                     try {
                         List<ColumnMetadata> columns = introspector.describeTable(
                                 connectionName, schemaName, tableName);
@@ -190,7 +208,7 @@ public class IntrospectionTools {
                         );
 
                         return successResult(result);
-                    } catch (IntrospectionException e) {
+                    } catch (IntrospectionException | IllegalArgumentException e) {
                         return errorResult(e.getMessage());
                     }
                 }
@@ -251,6 +269,10 @@ public class IntrospectionTools {
                         return errorResult("Table name is required");
                     }
 
+                    if (!queryGuard.isTableAllowed(schemaName, tableName)) {
+                        return errorResult("Access to table '" + tableName + "' is not allowed");
+                    }
+
                     try {
                         List<ForeignKeyMetadata> foreignKeys = introspector.listForeignKeys(
                                 connectionName, schemaName, tableName);
@@ -266,7 +288,7 @@ public class IntrospectionTools {
                         );
 
                         return successResult(result);
-                    } catch (IntrospectionException e) {
+                    } catch (IntrospectionException | IllegalArgumentException e) {
                         return errorResult(e.getMessage());
                     }
                 }
@@ -333,22 +355,22 @@ public class IntrospectionTools {
                     }
 
                     int limit = limitArg != null
-                            ? Math.min(limitArg, MAX_SAMPLE_LIMIT)
+                            ? Math.max(1, Math.min(limitArg, MAX_SAMPLE_LIMIT))
                             : DEFAULT_SAMPLE_LIMIT;
 
                     try {
-                        List<Map<String, Object>> rows = introspector.sampleRows(
+                        QueryResult sample = queryExecutor.sampleTable(
                                 connectionName, schemaName, tableName, limit);
 
                         Map<String, Object> result = Map.of(
                                 "table", tableName,
-                                "rows", rows,
-                                "rowCount", rows.size(),
+                                "rows", sample.rows(),
+                                "rowCount", sample.rowCount(),
                                 "limitApplied", limit
                         );
 
                         return successResult(result);
-                    } catch (IntrospectionException e) {
+                    } catch (QueryExecutionException | IllegalArgumentException e) {
                         return errorResult(e.getMessage());
                     }
                 }

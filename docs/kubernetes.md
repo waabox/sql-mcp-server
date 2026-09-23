@@ -45,9 +45,9 @@ data:
         default-row-limit: 1000
         max-row-limit: 10000
       tables:
-        deny-list:
-          - "pg_*"
-          - "information_schema.*"
+        deny-list: []
+      http:
+        auth-token: ${SQL_MCP_AUTH_TOKEN}
 
     server:
       port: 8080
@@ -69,6 +69,7 @@ type: Opaque
 stringData:
   DB_USER: "readonly_user"
   DB_PASS: "your-secure-password"
+  SQL_MCP_AUTH_TOKEN: "a-long-random-token"
 ```
 
 ### Deployment
@@ -110,6 +111,11 @@ spec:
                 secretKeyRef:
                   name: sql-mcp-secrets
                   key: DB_PASS
+            - name: SQL_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sql-mcp-secrets
+                  key: SQL_MCP_AUTH_TOKEN
           volumeMounts:
             - name: config
               mountPath: /app/config
@@ -258,7 +264,8 @@ secrets:
 
 ### Security
 
-- Always use `read-only: true` for database connections
+- Set `SQL_MCP_AUTH_TOKEN` (from a Secret) so the HTTP endpoint requires a bearer token
+- Connect with a dedicated read-only database role (see the Safety section in the README)
 - Configure table deny-lists to exclude sensitive tables
 - Use Kubernetes Secrets or external secret managers (Vault, AWS Secrets Manager)
 - Enable TLS for HTTP transport

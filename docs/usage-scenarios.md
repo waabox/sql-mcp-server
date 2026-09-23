@@ -23,8 +23,6 @@ sql-mcp:
 
   tables:
     deny-list:
-      - "pg_*"
-      - "information_schema.*"
       - "*_pii"           # Exclude PII tables
       - "salary_*"        # Exclude salary data
 ```
@@ -210,7 +208,6 @@ sql-mcp:
 
   tables:
     deny-list:
-      - "pg_*"
       - "api_keys"
       - "password_*"
 ```

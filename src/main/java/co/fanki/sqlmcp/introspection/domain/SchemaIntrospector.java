@@ -10,7 +10,6 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -188,57 +187,6 @@ public class SchemaIntrospector {
         return foreignKeys;
     }
 
-    /**
-     * Retrieves sample rows from a table.
-     *
-     * @param connectionName the connection profile name
-     * @param schemaName the schema name (null for default)
-     * @param tableName the table name
-     * @param limit maximum number of rows to return
-     * @return list of row maps (column name -> value)
-     * @throws IntrospectionException if database access fails
-     */
-    public List<Map<String, Object>> sampleRows(
-            final String connectionName,
-            final String schemaName,
-            final String tableName,
-            final int limit) {
-
-        DataSource dataSource = dataSourceFactory.getDataSource(connectionName);
-        List<Map<String, Object>> rows = new ArrayList<>();
-
-        String qualifiedName = schemaName != null && !schemaName.isBlank()
-                ? quoteIdentifier(schemaName) + "." + quoteIdentifier(tableName)
-                : quoteIdentifier(tableName);
-
-        // Use parameterized limit to prevent SQL injection
-        String sql = String.format("SELECT * FROM %s LIMIT %d", qualifiedName, Math.min(limit, 100));
-
-        try (Connection connection = dataSource.getConnection();
-             Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-
-            int columnCount = rs.getMetaData().getColumnCount();
-            List<String> columnNames = new ArrayList<>();
-            for (int i = 1; i <= columnCount; i++) {
-                columnNames.add(rs.getMetaData().getColumnName(i));
-            }
-
-            while (rs.next()) {
-                Map<String, Object> row = new HashMap<>();
-                for (int i = 1; i <= columnCount; i++) {
-                    Object value = rs.getObject(i);
-                    row.put(columnNames.get(i - 1), formatValue(value));
-                }
-                rows.add(row);
-            }
-        } catch (SQLException e) {
-            throw new IntrospectionException("Failed to sample rows: " + e.getMessage(), e);
-        }
-
-        return rows;
-    }
-
     private Set<String> getPrimaryKeyColumns(
             final DatabaseMetaData metaData,
             final String catalog,
@@ -252,25 +200,6 @@ public class SchemaIntrospector {
             }
         }
         return pkColumns;
-    }
-
-    private String quoteIdentifier(final String identifier) {
-        // Basic identifier quoting - prevents SQL injection
-        return "\"" + identifier.replace("\"", "\"\"") + "\"";
-    }
-
-    private Object formatValue(final Object value) {
-        if (value == null) {
-            return null;
-        }
-        // Convert complex types to strings for JSON serialization
-        if (value instanceof byte[]) {
-            return "[binary data]";
-        }
-        if (value instanceof java.sql.Clob || value instanceof java.sql.Blob) {
-            return "[LOB data]";
-        }
-        return value;
     }
 
     /**

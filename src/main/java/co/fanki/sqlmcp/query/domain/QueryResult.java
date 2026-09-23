@@ -18,7 +18,6 @@ public final class QueryResult {
 
     private final List<ColumnInfo> columns;
     private final List<Map<String, Object>> rows;
-    private final int totalRowCount;
     private final boolean truncated;
     private final long executionTimeMs;
     private final String query;
@@ -26,13 +25,11 @@ public final class QueryResult {
     private QueryResult(
             final List<ColumnInfo> columns,
             final List<Map<String, Object>> rows,
-            final int totalRowCount,
             final boolean truncated,
             final long executionTimeMs,
             final String query) {
         this.columns = Collections.unmodifiableList(new ArrayList<>(columns));
         this.rows = Collections.unmodifiableList(new ArrayList<>(rows));
-        this.totalRowCount = totalRowCount;
         this.truncated = truncated;
         this.executionTimeMs = executionTimeMs;
         this.query = Objects.requireNonNull(query);
@@ -75,20 +72,12 @@ public final class QueryResult {
     }
 
     /**
-     * Returns the total row count before truncation.
-     *
-     * <p>If the result was not truncated, this equals {@link #rowCount()}.
-     *
-     * @return the total row count
-     */
-    public int totalRowCount() {
-        return totalRowCount;
-    }
-
-    /**
      * Returns whether the result was truncated due to row limits.
      *
-     * @return true if truncated
+     * <p>The total number of rows is intentionally not computed: counting them
+     * would require reading the full result set on the server.
+     *
+     * @return true if more rows than {@link #rowCount()} were available
      */
     public boolean truncated() {
         return truncated;
@@ -194,7 +183,6 @@ public final class QueryResult {
 
         private final List<ColumnInfo> columns = new ArrayList<>();
         private final List<Map<String, Object>> rows = new ArrayList<>();
-        private int totalRowCount;
         private boolean truncated;
         private long executionTimeMs;
         private String query;
@@ -209,11 +197,6 @@ public final class QueryResult {
 
         public Builder addRow(final Map<String, Object> row) {
             this.rows.add(row);
-            return this;
-        }
-
-        public Builder totalRowCount(final int totalRowCount) {
-            this.totalRowCount = totalRowCount;
             return this;
         }
 
@@ -238,11 +221,8 @@ public final class QueryResult {
          * @return a new QueryResult instance
          */
         public QueryResult build() {
-            if (totalRowCount == 0) {
-                totalRowCount = rows.size();
-            }
             return new QueryResult(
-                    columns, rows, totalRowCount, truncated, executionTimeMs, query
+                    columns, rows, truncated, executionTimeMs, query
             );
         }
 

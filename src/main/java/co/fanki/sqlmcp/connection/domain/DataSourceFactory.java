@@ -2,6 +2,7 @@ package co.fanki.sqlmcp.connection.domain;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -17,6 +18,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Uses HikariCP for connection pooling. DataSources are cached by profile name
  * to avoid creating multiple pools for the same connection.
  *
+ * <p>Every pool is read-only and manual-commit, regardless of the profile
+ * configuration. Queries must run through {@link #openSession}, which applies
+ * the server-side timeouts and always rolls back.
+ *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 @Component
@@ -27,18 +32,24 @@ public class DataSourceFactory {
     private static final long DEFAULT_CONNECTION_TIMEOUT_MS = 30_000;
     private static final long DEFAULT_IDLE_TIMEOUT_MS = 600_000;
     private static final long DEFAULT_MAX_LIFETIME_MS = 1_800_000;
+    private static final String APPLICATION_NAME = "sql-mcp-server";
 
     private final Map<String, HikariDataSource> dataSources;
     private final ConnectionProfileRepository profileRepository;
+    private final long lockTimeoutMs;
 
     /**
      * Creates a new DataSourceFactory.
      *
      * @param profileRepository the repository for connection profiles
+     * @param lockTimeoutMs the maximum time a query may wait for a lock, in milliseconds
      */
-    public DataSourceFactory(final ConnectionProfileRepository profileRepository) {
+    public DataSourceFactory(
+            final ConnectionProfileRepository profileRepository,
+            @Value("${sql-mcp.query.lock-timeout-ms:5000}") final long lockTimeoutMs) {
         this.profileRepository = Objects.requireNonNull(profileRepository);
         this.dataSources = new ConcurrentHashMap<>();
+        this.lockTimeoutMs = lockTimeoutMs > 0 ? lockTimeoutMs : 5000;
     }
 
     /**
@@ -50,6 +61,28 @@ public class DataSourceFactory {
      */
     public DataSource getDataSource(final String profileName) {
         return dataSources.computeIfAbsent(profileName, this::createDataSource);
+    }
+
+    /**
+     * Opens a read-only session for a single unit of work.
+     *
+     * <p>Business rules: the session runs in a read-only transaction with a
+     * server-side statement timeout and lock timeout, and is always rolled back
+     * on close. Callers must close it (try-with-resources).
+     *
+     * @param profileName the name of the connection profile
+     * @param statementTimeoutMs the server-side statement timeout in milliseconds
+     * @return the open session
+     * @throws IllegalArgumentException if no profile exists with this name
+     * @throws SQLException if a connection cannot be obtained or prepared
+     */
+    public ReadOnlySession openSession(final String profileName, final long statementTimeoutMs)
+            throws SQLException {
+        ConnectionProfile profile = profileRepository.findByName(profileName)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Connection profile not found: " + profileName));
+        Connection connection = getDataSource(profileName).getConnection();
+        return ReadOnlySession.open(connection, profile.type(), statementTimeoutMs, lockTimeoutMs);
     }
 
     /**
@@ -116,7 +149,15 @@ public class DataSourceFactory {
             config.setSchema(profile.schema());
         }
 
-        config.setReadOnly(profile.readOnly());
+        // Always read-only and manual-commit: with auto-commit on, the PostgreSQL
+        // driver does not enforce read-only mode and ignores the fetch size.
+        config.setReadOnly(true);
+        config.setAutoCommit(false);
+        switch (profile.type()) {
+            case POSTGRESQL -> config.addDataSourceProperty("ApplicationName", APPLICATION_NAME);
+            case MYSQL, MARIADB -> config.setConnectionInitSql("SET SESSION TRANSACTION READ ONLY");
+            case SQLITE -> config.addDataSourceProperty("open_mode", "1");
+        }
         config.setMaximumPoolSize(DEFAULT_POOL_SIZE);
         config.setMinimumIdle(DEFAULT_MIN_IDLE);
         config.setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);

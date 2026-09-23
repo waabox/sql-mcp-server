@@ -62,7 +62,8 @@ Or create `.mcp.json` in your project root:
 
 **Remote (HTTP/SSE)** - when deployed on a server:
 ```bash
-claude mcp add sql --transport sse http://sql-mcp.example.com/sse
+claude mcp add sql --transport sse http://sql-mcp.example.com/sse \
+  --header "Authorization: Bearer ${SQL_MCP_AUTH_TOKEN}"
 ```
 
 Or in `.mcp.json`:
@@ -71,11 +72,15 @@ Or in `.mcp.json`:
   "mcpServers": {
     "sql": {
       "url": "http://sql-mcp.example.com/sse",
-      "transport": "sse"
+      "transport": "sse",
+      "headers": { "Authorization": "Bearer ${SQL_MCP_AUTH_TOKEN}" }
     }
   }
 }
 ```
+
+The bearer token is required when the server sets `sql-mcp.http.auth-token`
+(see [Safety](#safety)).
 
 ### 4. Try it
 
@@ -130,6 +135,7 @@ Ask Claude: *"Show me the top 5 users by order count"*
     { "id": 8, "name": "Carol", "order_count": 84 }
   ],
   "rowCount": 3,
+  "truncated": false,
   "executionTimeMs": 45
 }
 ```
@@ -137,8 +143,9 @@ Ask Claude: *"Show me the top 5 users by order count"*
 | Field | Description |
 |-------|-------------|
 | `columns` | Column metadata (name and SQL type) |
-| `rows` | Result rows as JSON objects |
+| `rows` | Result rows as JSON objects, keys in column order. Duplicate labels get a suffix (`id`, `id_2`) |
 | `rowCount` | Number of rows returned |
+| `truncated` | `true` when more rows than `limit` exist. The total is not counted, to avoid reading the whole result |
 | `executionTimeMs` | Query execution time in milliseconds |
 
 ## Supported Databases
@@ -146,20 +153,76 @@ Ask Claude: *"Show me the top 5 users by order count"*
 | Database       | Status    |
 |----------------|-----------|
 | PostgreSQL     | Supported |
-| MySQL/MariaDB  | Supported |
+| MySQL          | Supported |
+| MariaDB        | Supported |
 | SQLite         | Supported |
 
 ## Safety
 
-The server enforces read-only access at multiple levels:
+The server is designed for read-only access to production databases. Protection
+works in layers:
 
-- **Statement validation**: Only `SELECT`, `WITH`, and `EXPLAIN` statements are allowed. Any query starting with `INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, `ALTER`, `TRUNCATE`, `GRANT`, or `REVOKE` is rejected before execution.
+- **Read-only database sessions**: Every connection is read-only and runs in a
+  transaction that is always rolled back, whatever the profile says
+  (`read-only: false` is ignored with a warning). PostgreSQL runs `BEGIN READ ONLY`;
+  MySQL/MariaDB use `SET SESSION TRANSACTION READ ONLY`; SQLite opens the file in
+  read-only mode.
 
-- **Dangerous pattern detection**: Queries containing embedded DDL/DML keywords (e.g., `SELECT * FROM users; DROP TABLE users`) are blocked. Common SQL injection patterns (`' OR '1'='1`, `UNION ALL SELECT`, stacked queries) are detected and rejected.
+- **Server-side timeouts**: Each query gets a statement timeout (`default-timeout-ms`,
+  capped by `max-timeout-ms`) and a lock timeout (`lock-timeout-ms`). They are
+  applied by the database, not just the client. On PostgreSQL they are set with
+  `SET LOCAL`, which also works behind PgBouncer in transaction mode.
 
-- **Table access control**: Configure allow/deny lists to restrict which tables can be queried.
+- **Bounded reads**: Row limits are enforced by the driver with a cursor. The
+  server stops producing rows once the limit is reached, so a `SELECT *` on a
+  huge table returns quickly.
 
-**Important:** This is a defense-in-depth layer, not a replacement for database-level permissions. Always use a read-only database user with minimal privileges.
+- **Statement validation**: The query is tokenized with each engine's quoting and
+  comment rules. Keywords inside string literals, quoted identifiers or comments
+  are ignored, so `WHERE action = 'DELETE' OR type = 'x'` and `UNION ALL` work.
+  The validator rejects:
+  - more than one statement;
+  - anything that does not start with `SELECT` or `WITH`;
+  - data-modifying keywords anywhere, including writable CTEs and `SELECT ... INTO`;
+  - row-locking clauses (`FOR UPDATE`, `FOR SHARE`, `LOCK IN SHARE MODE`);
+  - functions that affect other sessions or the server, such as
+    `pg_terminate_backend`, `pg_cancel_backend`, `set_config`, `pg_sleep`,
+    advisory locks, `nextval`, `pg_stat_reset`, file access, `dblink` and
+    `query_to_xml`.
+
+  The query text is sent to the database unchanged.
+
+- **Table access control**: Allow/deny lists apply to every table in `FROM`/`JOIN`
+  clauses at any depth (subqueries, CTEs, comma joins). They also apply to
+  `list_tables`, `describe_table`, `list_foreign_keys` and `sample_rows`. System
+  catalogs such as `pg_stat_activity`, `pg_locks` and `information_schema` are
+  allowed by default because debugging needs them.
+
+- **Audit log**: Every query attempt is written to `logs/audit.log` as one JSON
+  line: connection, query, status (`SUCCESS`, `FAILURE`, `VALIDATION_ERROR`),
+  duration and row count.
+
+- **HTTP authentication**: With the HTTP transport, set `sql-mcp.http.auth-token`
+  (or `SQL_MCP_AUTH_TOKEN`) to require `Authorization: Bearer <token>` on every
+  request except `/health`. Without a token the server runs unauthenticated and
+  logs a warning at startup.
+
+**Important:** These layers do not replace database permissions. Use a dedicated
+database user that can only read what Claude needs. On PostgreSQL:
+
+```sql
+CREATE ROLE claude_ro LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE appdb TO claude_ro;
+GRANT USAGE ON SCHEMA public TO claude_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO claude_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO claude_ro;
+-- Optional: see every session's query text in pg_stat_activity / pg_stat_statements
+GRANT pg_read_all_stats TO claude_ro;
+```
+
+Never use a superuser, and never grant `pg_signal_backend`, `pg_write_server_files`
+or `pg_read_server_files` to this role. Point the connection at a read replica
+when you have one.
 
 ## MCP Tools
 
@@ -194,16 +257,22 @@ sql-mcp:
       read-only: true
 
   query:
-    default-timeout-ms: 30000
+    default-timeout-ms: 30000   # per-query default
+    max-timeout-ms: 120000      # upper bound for the per-call "timeout" argument
+    lock-timeout-ms: 5000       # fail instead of waiting on locks
     default-row-limit: 1000
     max-row-limit: 10000
 
   tables:
+    # '*' is a wildcard. A pattern without a dot matches the table name in any
+    # schema; a pattern with a dot matches the schema-qualified name.
     deny-list:
-      - "pg_*"
-      - "information_schema.*"
       - "*_audit"
       - "credentials"
+      - "secret.*"
+
+  http:
+    auth-token: ${SQL_MCP_AUTH_TOKEN:}   # HTTP transport only
 ```
 
 ### Multiple Database Connections
@@ -268,7 +337,7 @@ sql-mcp:
 | `username` | string | Yes* | - | Database user (*not required for SQLite) |
 | `password` | string | Yes* | - | Database password (*not required for SQLite) |
 | `schema` | string | No | Engine default | Default schema for queries |
-| `read-only` | boolean | No | `true` | Enforce read-only connections |
+| `read-only` | boolean | No | `true` | Ignored: every connection is read-only. `false` logs a warning |
 
 #### Using Multiple Connections
 
@@ -294,6 +363,7 @@ freely within the same session.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SQL_MCP_TRANSPORT` | `stdio` or `http` | `stdio` |
+| `SQL_MCP_AUTH_TOKEN` | Bearer token required by the HTTP transport | - (unauthenticated) |
 | `DB_USER` | Database username | - |
 | `DB_PASS` | Database password | - |
 
@@ -370,11 +440,14 @@ The integration tests spawn the MCP server as a subprocess and communicate via S
 | `ecommerce_db` | categories, products, customers, orders, order_items | E-commerce domain with FKs |
 | `hr_db` | departments, employees | HR domain with self-referencing FK |
 
-**Test coverage (21 tests):**
+**Test coverage (114 tests):**
 - Connection management (list, test, unknown connection)
 - Schema introspection (list tables, describe, foreign keys, sample rows)
 - Query execution (SELECT, JOIN, aggregates, row limits)
-- Safety guards (blocks INSERT, DELETE, DROP)
+- Safety guards (blocks INSERT, DELETE, DROP, writable CTEs, `FOR UPDATE`, dangerous functions)
+- Production safety: read-only transactions, server-side timeouts, bounded reads, table deny list, audit log
+- Read-only enforcement at the database level on PostgreSQL, MySQL, MariaDB and SQLite
+- Query validator unit tests (dialect-aware tokenization, table extraction)
 - Query explanation (EXPLAIN, ANALYZE, JSON format)
 - **Cross-database operations**: Tests switch between `ecommerce` and `hr` connections in the same session, verifying database isolation (tables from one DB don't appear in another) and correct query routing across multiple databases
 

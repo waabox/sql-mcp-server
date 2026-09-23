@@ -4,11 +4,12 @@ import co.fanki.sqlmcp.connection.domain.ConnectionProfile;
 import co.fanki.sqlmcp.connection.domain.ConnectionProfileRepository;
 import co.fanki.sqlmcp.connection.domain.DataSourceFactory;
 import co.fanki.sqlmcp.connection.domain.DatabaseType;
+import co.fanki.sqlmcp.connection.domain.ReadOnlySession;
+import co.fanki.sqlmcp.observability.domain.QueryAuditLog.QueryType;
+import co.fanki.sqlmcp.observability.domain.QueryLogger;
 import co.fanki.sqlmcp.query.domain.QueryGuard.ValidationResult;
 import org.springframework.stereotype.Component;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -20,7 +21,9 @@ import java.util.Objects;
  * Domain service for explaining SQL query execution plans.
  *
  * <p>Supports EXPLAIN and EXPLAIN ANALYZE for understanding
- * how the database will execute a query.
+ * how the database will execute a query. EXPLAIN ANALYZE really executes the
+ * query, so both run in the same read-only session, with the same validation,
+ * timeouts and auditing as {@link QueryExecutor}.
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
@@ -30,6 +33,8 @@ public class QueryExplainer {
     private final DataSourceFactory dataSourceFactory;
     private final ConnectionProfileRepository profileRepository;
     private final QueryGuard queryGuard;
+    private final QueryExecutor queryExecutor;
+    private final QueryLogger queryLogger;
 
     /**
      * Creates a new QueryExplainer.
@@ -37,14 +42,20 @@ public class QueryExplainer {
      * @param dataSourceFactory the factory for data sources
      * @param profileRepository the connection profile repository
      * @param queryGuard the query validation service
+     * @param queryExecutor the query executor, source of the timeout configuration
+     * @param queryLogger the audit logger
      */
     public QueryExplainer(
             final DataSourceFactory dataSourceFactory,
             final ConnectionProfileRepository profileRepository,
-            final QueryGuard queryGuard) {
+            final QueryGuard queryGuard,
+            final QueryExecutor queryExecutor,
+            final QueryLogger queryLogger) {
         this.dataSourceFactory = Objects.requireNonNull(dataSourceFactory);
         this.profileRepository = Objects.requireNonNull(profileRepository);
         this.queryGuard = Objects.requireNonNull(queryGuard);
+        this.queryExecutor = Objects.requireNonNull(queryExecutor);
+        this.queryLogger = Objects.requireNonNull(queryLogger);
     }
 
     /**
@@ -62,6 +73,9 @@ public class QueryExplainer {
     /**
      * Explains a query's execution plan with optional analysis.
      *
+     * <p>Business rules: the query must pass {@link QueryGuard}; it runs with the
+     * configured default query timeout; every attempt is audited.
+     *
      * @param connectionName the connection profile name
      * @param query the SQL query to explain
      * @param analyze whether to actually execute the query for real statistics
@@ -75,28 +89,29 @@ public class QueryExplainer {
             final boolean analyze,
             final ExplainFormat format) {
 
-        // Validate the query first
-        ValidationResult validation = queryGuard.validate(query);
-        if (!validation.isValid()) {
-            throw new ExplainException("Query validation failed: " + validation.error());
-        }
-
-        String sanitizedQuery = queryGuard.sanitize(query);
-
         ConnectionProfile profile = profileRepository.findByName(connectionName)
                 .orElseThrow(() -> new ExplainException(
                         "Connection profile not found: " + connectionName));
 
+        ValidationResult validation = queryGuard.validate(query, profile.type());
+        if (!validation.isValid()) {
+            queryLogger.logValidationError(connectionName, query, validation.error());
+            throw new ExplainException("Query validation failed: " + validation.error());
+        }
+
+        String sanitizedQuery = query.strip();
+        QueryType queryType = analyze ? QueryType.ANALYZE : QueryType.EXPLAIN;
+
         // Build EXPLAIN statement based on database type
         String explainQuery = buildExplainQuery(profile.type(), sanitizedQuery, analyze, format);
 
-        DataSource dataSource = dataSourceFactory.getDataSource(connectionName);
+        int timeoutMs = queryExecutor.defaultTimeoutMs();
         long startTime = System.currentTimeMillis();
 
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
+        try (ReadOnlySession session = dataSourceFactory.openSession(connectionName, timeoutMs);
+             Statement statement = session.connection().createStatement()) {
 
-            statement.setQueryTimeout(60); // 60 second timeout for EXPLAIN ANALYZE
+            statement.setQueryTimeout(Math.max(1, (timeoutMs + 999) / 1000));
 
             List<String> planLines = new ArrayList<>();
             String planText;
@@ -119,6 +134,8 @@ public class QueryExplainer {
             }
 
             long executionTime = System.currentTimeMillis() - startTime;
+            queryLogger.logSuccess(connectionName, queryType, sanitizedQuery,
+                    executionTime, planLines.size(), false);
 
             return ExplainResult.create(
                     sanitizedQuery,
@@ -130,6 +147,8 @@ public class QueryExplainer {
             );
 
         } catch (SQLException e) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            queryLogger.logFailure(connectionName, queryType, sanitizedQuery, elapsed, e.getMessage());
             throw new ExplainException("Failed to explain query: " + e.getMessage(), e);
         }
     }
