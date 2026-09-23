@@ -40,7 +40,7 @@ sql-mcp:
 
 **Local (STDIO):**
 ```bash
-claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.0.0.jar \
+claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.0.1.jar \
   --spring.config.additional-location=/path/to/application.yml
 ```
 
@@ -52,7 +52,7 @@ Or create `.mcp.json` in your project root:
       "command": "java",
       "args": [
         "-jar",
-        "/path/to/sql-mcp-server-1.0.0.jar",
+        "/path/to/sql-mcp-server-1.0.1.jar",
         "--spring.config.additional-location=/path/to/application.yml"
       ]
     }
@@ -371,12 +371,12 @@ For local use with Claude Code, the [Quickstart](#quickstart) is enough.
 ### Container image
 
 ```bash
-docker pull ghcr.io/waabox/sql-mcp-server:v1.0.0   # or :latest
+docker pull ghcr.io/waabox/sql-mcp-server:v1.0.1   # or :latest
 ```
 
 | Property | Value |
 |----------|-------|
-| Platform | `linux/amd64` only (arm64 hosts need emulation) |
+| Platforms | `linux/amd64`, `linux/arm64` (arm64 since v1.0.1) |
 | User | non-root, uid/gid `1001` |
 | Port | `8080` (`SERVER_PORT`) |
 | MCP endpoint | `POST /mcp` (stateless Streamable HTTP) |
@@ -391,10 +391,11 @@ sources, and the higher one wins:
 
 | Priority | Source | Example |
 |----------|--------|---------|
-| 1 (highest) | JVM system properties via `JAVA_OPTS` | `JAVA_OPTS="$JAVA_OPTS -Dsql-mcp.query.default-timeout-ms=60000"` |
-| 2 | Environment variables | `SQL_MCP_QUERY_DEFAULT_TIMEOUT_MS=60000` |
-| 3 | Mounted config file `/app/config/application.yml` | see below |
-| 4 (lowest) | Defaults packaged in the jar | [`application.yml`](src/main/resources/application.yml) |
+| 1 (highest) | Container arguments | `docker run ... <image> --sql-mcp.query.default-timeout-ms=60000` |
+| 2 | JVM system properties via `JAVA_OPTS` | `JAVA_OPTS="$JAVA_OPTS -Dsql-mcp.query.default-timeout-ms=60000"` |
+| 3 | Environment variables | `SQL_MCP_QUERY_DEFAULT_TIMEOUT_MS=60000` |
+| 4 | Mounted config file `/app/config/application.yml` | see below |
+| 5 (lowest) | Defaults packaged in the jar | [`application.yml`](src/main/resources/application.yml) |
 
 Rules to keep in mind:
 
@@ -407,10 +408,10 @@ Rules to keep in mind:
 - **The config file is picked up automatically** when mounted at
   `/app/config/application.yml`, on top of the packaged defaults. No extra flag
   is needed.
-- **Container arguments are ignored.** The image entrypoint is
-  `sh -c "java $JAVA_OPTS -jar app.jar"`, so `docker run ... image --foo=bar` or
-  Kubernetes `args:` never reach the application. Use environment variables,
-  `JAVA_OPTS`, or the mounted file.
+- **Container arguments** (`docker run ... <image> --foo=bar`, Kubernetes `args:`)
+  are passed to the application since v1.0.1. In v1.0.0 they were silently
+  ignored. Quote arguments that contain brackets, such as
+  `'--sql-mcp.connections[0].name=db'`.
 - **Avoid `--spring.config.location`** outside the container: it *replaces* the
   packaged defaults instead of adding to them. Use
   `--spring.config.additional-location=/path/to/application.yml`.
@@ -458,7 +459,7 @@ docker run -d --name sql-mcp \
   -e SQL_MCP_CONNECTIONS_0_PASSWORD="$PAYMENTS_DB_PASS" \
   -e SQL_MCP_TABLES_DENY_LIST_0=credentials \
   -v sql-mcp-logs:/app/logs \
-  ghcr.io/waabox/sql-mcp-server:v1.0.0
+  ghcr.io/waabox/sql-mcp-server:v1.0.1
 ```
 
 Or with a config file (secrets still come from the environment through `${VAR}`
@@ -471,7 +472,7 @@ docker run -d --name sql-mcp \
   -e DB_USER=claude_ro -e DB_PASS="$DB_PASS" \
   -v ./application.yml:/app/config/application.yml:ro \
   -v sql-mcp-logs:/app/logs \
-  ghcr.io/waabox/sql-mcp-server:v1.0.0
+  ghcr.io/waabox/sql-mcp-server:v1.0.1
 ```
 
 Smoke test:
@@ -491,8 +492,10 @@ Full manifests (ConfigMap, Secret, Deployment, Service, Helm values) are in
 - **Probes**: use `GET /health` for liveness and readiness. It needs no token.
 - **Secrets**: put `SQL_MCP_AUTH_TOKEN` and database passwords in a Secret and
   expose them as environment variables.
-- **Config**: mount the ConfigMap at `/app/config`. It is loaded automatically;
-  `args:` are ignored by the image entrypoint.
+- **Config**: mount the ConfigMap at `/app/config`. It is loaded automatically,
+  with no `args:` needed.
+- **Shutdown**: on SIGTERM the server stops accepting requests and waits up to
+  30 s for in-flight queries before closing the database pools.
 
 ### Networking
 

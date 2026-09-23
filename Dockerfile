@@ -4,7 +4,9 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM amazoncorretto:21-alpine AS builder
+# The jar is platform independent, so build it once on the native platform of the
+# build machine instead of under emulation for every target platform.
+FROM --platform=$BUILDPLATFORM amazoncorretto:21-alpine AS builder
 
 WORKDIR /app
 
@@ -62,5 +64,7 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
 # Default to HTTP transport for container deployment
 ENV SQL_MCP_TRANSPORT="http"
 
-# Run the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# Run the application.
+# - `exec` makes the JVM PID 1 so it receives SIGTERM and shuts down gracefully.
+# - "$@" forwards container arguments (docker run ... <image> --foo=bar, or Kubernetes args).
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar \"$@\"", "--"]

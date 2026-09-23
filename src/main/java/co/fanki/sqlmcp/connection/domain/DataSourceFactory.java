@@ -2,6 +2,7 @@ package co.fanki.sqlmcp.connection.domain;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -122,8 +123,9 @@ public class DataSourceFactory {
     /**
      * Closes all cached DataSource connections.
      *
-     * <p>Should be called during application shutdown.
+     * <p>Called automatically when the application shuts down.
      */
+    @PreDestroy
     public void closeAll() {
         dataSources.values().forEach(HikariDataSource::close);
         dataSources.clear();
