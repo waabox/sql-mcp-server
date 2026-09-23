@@ -9,8 +9,12 @@ import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.function.RouterFunction;
@@ -36,6 +40,7 @@ import java.util.List;
 @Configuration
 public class McpServerConfig {
 
+    private static final Logger LOG = LoggerFactory.getLogger(McpServerConfig.class);
     private static final String SERVER_NAME = "sql-mcp-server";
     private static final String SERVER_VERSION = "1.0.1";
     private static final String MCP_ENDPOINT = "/mcp";
@@ -55,15 +60,30 @@ public class McpServerConfig {
     // =========================================================================
 
     /**
+     * Wraps the process standard input so the server can detect when the
+     * client closes it.
+     *
+     * @return the standard input wrapper
+     */
+    @Bean
+    @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
+    public EofAwareInputStream stdioInput() {
+        return EofAwareInputStream.wrap(System.in);
+    }
+
+    /**
      * Creates the STDIO transport provider for CLI usage.
      *
      * @param objectMapper the ObjectMapper for JSON serialization
+     * @param stdioInput the standard input wrapper
      * @return the configured STDIO transport provider
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
-    public StdioServerTransportProvider stdioTransportProvider(final ObjectMapper objectMapper) {
-        return new StdioServerTransportProvider(objectMapper);
+    public StdioServerTransportProvider stdioTransportProvider(
+            final ObjectMapper objectMapper,
+            final EofAwareInputStream stdioInput) {
+        return new StdioServerTransportProvider(objectMapper, stdioInput, System.out);
     }
 
     /**
@@ -90,18 +110,28 @@ public class McpServerConfig {
     }
 
     /**
-     * Runs the STDIO MCP server and blocks until shutdown.
+     * Keeps the STDIO MCP server running until the client closes standard input.
+     *
+     * <p>Business rule: when standard input reaches end of file the client is
+     * gone, so the application shuts down (closing the database pools) instead
+     * of lingering as an orphan process.
      *
      * @param server the MCP server to run
-     * @return the command line runner that starts the server
+     * @param stdioInput the standard input wrapper
+     * @param context the application context to close on exit
+     * @return the command line runner that blocks until the client disconnects
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "stdio", matchIfMissing = true)
-    public CommandLineRunner runStdioServer(final McpSyncServer server) {
+    public CommandLineRunner runStdioServer(
+            final McpSyncServer server,
+            final EofAwareInputStream stdioInput,
+            final ConfigurableApplicationContext context) {
         return args -> {
-            // Server is already started via the transport provider
-            // Block the main thread to keep the application running
-            Thread.currentThread().join();
+            // The server is already started by the transport provider.
+            stdioInput.awaitEof();
+            LOG.info("Standard input closed by the MCP client; shutting down");
+            System.exit(SpringApplication.exit(context));
         };
     }
 

@@ -56,7 +56,9 @@ sql-mcp:
 
 # Server configuration (for HTTP transport mode)
 server:
-  port: 8080
+  # Port defaults: 8080 with the http transport; random (0) with stdio, where
+  # only /health is served and every Claude session runs its own process.
+  # Setting server.port / SERVER_PORT explicitly overrides both.
   # On SIGTERM, stop accepting requests and let in-flight queries finish
   shutdown: graceful
 

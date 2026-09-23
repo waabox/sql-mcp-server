@@ -421,7 +421,7 @@ Rules to keep in mind:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SQL_MCP_TRANSPORT` | `stdio` (`http` in the image) | `stdio` for local use, `http` for a shared server |
-| `SERVER_PORT` | `8080` | HTTP port |
+| `SERVER_PORT` | `8080` (http), random (stdio) | HTTP port. In stdio mode it only serves `/health`, so it defaults to a random free port and several Claude sessions never collide |
 | `SQL_MCP_AUTH_TOKEN` | empty | Bearer token required on `/mcp`. Empty means **no authentication** (a warning is logged at startup) |
 | `SQL_MCP_QUERY_DEFAULT_TIMEOUT_MS` | `30000` | Timeout per query when the caller does not set one |
 | `SQL_MCP_QUERY_MAX_TIMEOUT_MS` | `120000` | Upper bound for any query timeout |
