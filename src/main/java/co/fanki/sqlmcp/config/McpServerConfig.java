@@ -3,9 +3,11 @@ package co.fanki.sqlmcp.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
+import io.modelcontextprotocol.server.McpStatelessSyncServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
-import io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider;
+import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,7 +24,9 @@ import java.util.List;
  * <p>Supports two transport modes:
  * <ul>
  *   <li>STDIO (default) - for CLI usage and local development</li>
- *   <li>HTTP/SSE - for server deployment with web clients</li>
+ *   <li>Streamable HTTP - for server deployment. The server is stateless: every
+ *       JSON-RPC request is a self-contained POST to {@code /mcp}, so it can run
+ *       behind a load balancer with several replicas and no sticky sessions.</li>
  * </ul>
  *
  * <p>Set {@code sql-mcp.transport=http} to enable HTTP mode.
@@ -34,7 +38,7 @@ public class McpServerConfig {
 
     private static final String SERVER_NAME = "sql-mcp-server";
     private static final String SERVER_VERSION = "1.0.0";
-    private static final String SSE_MESSAGE_ENDPOINT = "/mcp/message";
+    private static final String MCP_ENDPOINT = "/mcp";
 
     /**
      * Creates the ObjectMapper for JSON serialization.
@@ -102,55 +106,68 @@ public class McpServerConfig {
     }
 
     // =========================================================================
-    // HTTP/SSE Transport Configuration (for server deployment)
+    // Streamable HTTP Transport Configuration (for server deployment)
     // =========================================================================
 
     /**
-     * Creates the HTTP/SSE transport provider for server deployment.
+     * Creates the stateless Streamable HTTP transport for server deployment.
      *
      * @param objectMapper the ObjectMapper for JSON serialization
-     * @return the configured HTTP/SSE transport provider
+     * @return the configured Streamable HTTP transport
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
-    public WebMvcSseServerTransportProvider httpTransportProvider(final ObjectMapper objectMapper) {
-        return new WebMvcSseServerTransportProvider(objectMapper, SSE_MESSAGE_ENDPOINT);
+    public WebMvcStatelessServerTransport httpTransport(final ObjectMapper objectMapper) {
+        return WebMvcStatelessServerTransport.builder()
+                .objectMapper(objectMapper)
+                .messageEndpoint(MCP_ENDPOINT)
+                .build();
     }
 
     /**
-     * Creates the router function for MCP HTTP endpoints.
+     * Creates the router function for the MCP HTTP endpoint.
      *
-     * @param transportProvider the HTTP/SSE transport provider
+     * @param transport the Streamable HTTP transport
      * @return the router function for handling MCP requests
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
-    public RouterFunction<ServerResponse> mcpRouterFunction(
-            final WebMvcSseServerTransportProvider transportProvider) {
-        return transportProvider.getRouterFunction();
+    public RouterFunction<ServerResponse> mcpRouterFunction(final WebMvcStatelessServerTransport transport) {
+        return transport.getRouterFunction();
     }
 
     /**
-     * Creates the MCP server with HTTP/SSE transport.
+     * Creates the MCP server with the stateless Streamable HTTP transport.
      *
-     * @param transportProvider the HTTP/SSE transport provider
+     * <p>The tool specifications are shared with the STDIO server; none of them
+     * uses the session exchange, so they are adapted to stateless handlers.
+     *
+     * @param transport the Streamable HTTP transport
      * @param tools the list of tool specifications to register
      * @return the configured MCP server
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http")
-    public McpSyncServer httpMcpServer(
-            final WebMvcSseServerTransportProvider transportProvider,
+    public McpStatelessSyncServer httpMcpServer(
+            final WebMvcStatelessServerTransport transport,
             final List<McpServerFeatures.SyncToolSpecification> tools) {
 
-        McpSyncServer server = McpServer.sync(transportProvider)
+        List<McpStatelessServerFeatures.SyncToolSpecification> statelessTools = tools.stream()
+                .map(McpServerConfig::toStateless)
+                .toList();
+
+        return McpServer.sync(transport)
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
-                .capabilities(buildCapabilities())
+                .capabilities(ServerCapabilities.builder().tools(true).build())
+                .tools(statelessTools)
                 .build();
+    }
 
-        tools.forEach(server::addTool);
-
-        return server;
+    private static McpStatelessServerFeatures.SyncToolSpecification toStateless(
+            final McpServerFeatures.SyncToolSpecification spec) {
+        return new McpStatelessServerFeatures.SyncToolSpecification(
+                spec.tool(),
+                (context, request) -> spec.callHandler().apply(null, request));
     }
 
     // =========================================================================

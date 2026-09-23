@@ -60,9 +60,9 @@ Or create `.mcp.json` in your project root:
 }
 ```
 
-**Remote (HTTP/SSE)** - when deployed on a server:
+**Remote (Streamable HTTP)** - when deployed on a server:
 ```bash
-claude mcp add sql --transport sse http://sql-mcp.example.com/sse \
+claude mcp add sql --transport http http://sql-mcp.example.com/mcp \
   --header "Authorization: Bearer ${SQL_MCP_AUTH_TOKEN}"
 ```
 
@@ -71,8 +71,8 @@ Or in `.mcp.json`:
 {
   "mcpServers": {
     "sql": {
-      "url": "http://sql-mcp.example.com/sse",
-      "transport": "sse",
+      "type": "http",
+      "url": "http://sql-mcp.example.com/mcp",
       "headers": { "Authorization": "Bearer ${SQL_MCP_AUTH_TOKEN}" }
     }
   }
@@ -81,6 +81,11 @@ Or in `.mcp.json`:
 
 The bearer token is required when the server sets `sql-mcp.http.auth-token`
 (see [Safety](#safety)).
+
+The HTTP transport is stateless Streamable HTTP on a single endpoint, `/mcp`.
+Each request is independent, so you can run several replicas behind a load
+balancer without sticky sessions. The legacy SSE endpoints (`/sse`,
+`/mcp/message`) were removed.
 
 ### 4. Try it
 
@@ -440,7 +445,7 @@ The integration tests spawn the MCP server as a subprocess and communicate via S
 | `ecommerce_db` | categories, products, customers, orders, order_items | E-commerce domain with FKs |
 | `hr_db` | departments, employees | HR domain with self-referencing FK |
 
-**Test coverage (114 tests):**
+**Test coverage (119 tests):**
 - Connection management (list, test, unknown connection)
 - Schema introspection (list tables, describe, foreign keys, sample rows)
 - Query execution (SELECT, JOIN, aggregates, row limits)
@@ -448,6 +453,7 @@ The integration tests spawn the MCP server as a subprocess and communicate via S
 - Production safety: read-only transactions, server-side timeouts, bounded reads, table deny list, audit log
 - Read-only enforcement at the database level on PostgreSQL, MySQL, MariaDB and SQLite
 - Query validator unit tests (dialect-aware tokenization, table extraction)
+- Streamable HTTP transport with bearer-token authentication
 - Query explanation (EXPLAIN, ANALYZE, JSON format)
 - **Cross-database operations**: Tests switch between `ecommerce` and `hr` connections in the same session, verifying database isolation (tables from one DB don't appear in another) and correct query routing across multiple databases
 

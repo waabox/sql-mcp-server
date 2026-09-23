@@ -290,14 +290,15 @@ secrets:
 
 ## Claude Desktop Integration (Remote)
 
-Connect to a deployed server via HTTP/SSE:
+Connect to a deployed server via Streamable HTTP:
 
 ```json
 {
   "mcpServers": {
     "sql": {
-      "url": "http://sql-mcp.example.com/sse",
-      "transport": "sse"
+      "type": "http",
+      "url": "https://sql-mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${SQL_MCP_AUTH_TOKEN}" }
     }
   }
 }
@@ -309,9 +310,13 @@ For internal Kubernetes access:
 {
   "mcpServers": {
     "sql": {
-      "url": "http://sql-mcp-server.mcp.svc.cluster.local/sse",
-      "transport": "sse"
+      "type": "http",
+      "url": "http://sql-mcp-server.mcp.svc.cluster.local/mcp",
+      "headers": { "Authorization": "Bearer ${SQL_MCP_AUTH_TOKEN}" }
     }
   }
 }
 ```
+
+The server is stateless, so the Service can spread requests across replicas
+without session affinity.
