@@ -1,5 +1,6 @@
 package co.fanki.sqlmcp.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -52,7 +53,8 @@ public class McpServerConfig {
      */
     @Bean
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        // Claude Code sends newer capability fields (e.g. elicitation.form) unknown to MCP SDK 0.12.1
+        return new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     // =========================================================================
