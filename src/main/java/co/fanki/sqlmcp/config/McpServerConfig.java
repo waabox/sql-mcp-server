@@ -175,6 +175,7 @@ public class McpServerConfig {
      * uses the session exchange, so they are adapted to stateless handlers.
      *
      * @param transport the Streamable HTTP transport
+     * @param objectMapper the ObjectMapper used to parse request params
      * @param tools the list of tool specifications to register
      * @return the configured MCP server
      */
@@ -182,13 +183,17 @@ public class McpServerConfig {
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
     public McpStatelessSyncServer httpMcpServer(
             final WebMvcStatelessServerTransport transport,
+            final ObjectMapper objectMapper,
             final List<McpServerFeatures.SyncToolSpecification> tools) {
 
         List<McpStatelessServerFeatures.SyncToolSpecification> statelessTools = tools.stream()
                 .map(McpServerConfig::toStateless)
                 .toList();
 
+        // The stateless server parses request params (e.g. initialize) with its own
+        // mapper, which defaults to a strict one; pass ours so unknown fields are ignored.
         return McpServer.sync(transport)
+                .objectMapper(objectMapper)
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
                 .capabilities(ServerCapabilities.builder().tools(true).build())
                 .tools(statelessTools)
