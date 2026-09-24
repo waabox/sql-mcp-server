@@ -14,7 +14,7 @@
 
     <groupId>co.fanki</groupId>
     <artifactId>sql-mcp-server</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
     <name>sql-mcp-server</name>
     <description>MCP server that exposes SQL databases to LLMs</description>
 
