@@ -40,7 +40,7 @@ sql-mcp:
 
 **Local (STDIO):**
 ```bash
-claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.1.1.jar \
+claude mcp add sql -- java -jar /path/to/sql-mcp-server-1.1.2.jar \
   --spring.config.additional-location=/path/to/application.yml
 ```
 
@@ -52,7 +52,7 @@ Or create `.mcp.json` in your project root:
       "command": "java",
       "args": [
         "-jar",
-        "/path/to/sql-mcp-server-1.1.1.jar",
+        "/path/to/sql-mcp-server-1.1.2.jar",
         "--spring.config.additional-location=/path/to/application.yml"
       ]
     }
@@ -369,7 +369,7 @@ For local use with Claude Code, the [Quickstart](#quickstart) is enough.
 ### Container image
 
 ```bash
-docker pull ghcr.io/waabox/sql-mcp-server:v1.1.1   # or :latest
+docker pull ghcr.io/waabox/sql-mcp-server:v1.1.2   # or :latest
 ```
 
 | Property | Value |
@@ -457,7 +457,7 @@ docker run -d --name sql-mcp \
   -e SQL_MCP_CONNECTIONS_0_PASSWORD="$PAYMENTS_DB_PASS" \
   -e SQL_MCP_TABLES_DENY_LIST_0=credentials \
   -v sql-mcp-logs:/app/logs \
-  ghcr.io/waabox/sql-mcp-server:v1.1.1
+  ghcr.io/waabox/sql-mcp-server:v1.1.2
 ```
 
 Or with a config file (secrets still come from the environment through `${VAR}`
@@ -470,7 +470,7 @@ docker run -d --name sql-mcp \
   -e DB_USER=claude_ro -e DB_PASS="$DB_PASS" \
   -v ./application.yml:/app/config/application.yml:ro \
   -v sql-mcp-logs:/app/logs \
-  ghcr.io/waabox/sql-mcp-server:v1.1.1
+  ghcr.io/waabox/sql-mcp-server:v1.1.2
 ```
 
 Smoke test:
