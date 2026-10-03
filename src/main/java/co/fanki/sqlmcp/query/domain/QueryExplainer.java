@@ -153,7 +153,7 @@ public class QueryExplainer {
         }
     }
 
-    private String buildExplainQuery(
+    String buildExplainQuery(
             final DatabaseType dbType,
             final String query,
             final boolean analyze,
@@ -162,6 +162,7 @@ public class QueryExplainer {
         return switch (dbType) {
             case POSTGRESQL -> buildPostgresExplain(query, analyze, format);
             case MYSQL, MARIADB -> buildMySqlExplain(query, analyze, format);
+            case REDSHIFT -> buildRedshiftExplain(query, analyze, format);
             case SQLITE -> buildSqliteExplain(query, analyze);
         };
     }
@@ -214,6 +215,21 @@ public class QueryExplainer {
 
         sb.append(query);
         return sb.toString();
+    }
+
+    private String buildRedshiftExplain(
+            final String query,
+            final boolean analyze,
+            final ExplainFormat format) {
+
+        // Redshift only supports a plain text EXPLAIN without ANALYZE or FORMAT options
+        if (analyze) {
+            throw new ExplainException("EXPLAIN ANALYZE is not supported by Redshift");
+        }
+        if (format != ExplainFormat.TEXT) {
+            throw new ExplainException("Redshift only supports TEXT format for EXPLAIN");
+        }
+        return "EXPLAIN " + query;
     }
 
     private String buildSqliteExplain(final String query, final boolean analyze) {

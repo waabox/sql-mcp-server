@@ -156,7 +156,7 @@ public class DataSourceFactory {
         config.setReadOnly(true);
         config.setAutoCommit(false);
         switch (profile.type()) {
-            case POSTGRESQL -> config.addDataSourceProperty("ApplicationName", APPLICATION_NAME);
+            case POSTGRESQL, REDSHIFT -> config.addDataSourceProperty("ApplicationName", APPLICATION_NAME);
             case MYSQL, MARIADB -> config.setConnectionInitSql("SET SESSION TRANSACTION READ ONLY");
             case SQLITE -> config.addDataSourceProperty("open_mode", "1");
         }

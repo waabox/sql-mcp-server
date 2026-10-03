@@ -29,7 +29,8 @@ public final class ReadOnlySession implements AutoCloseable {
      * <p>Business rules: the connection must be in manual-commit, read-only mode
      * (enforced by the pool configuration). For PostgreSQL the timeouts are set
      * with {@code SET LOCAL}, so they only live for this transaction and work
-     * behind transaction-pooling proxies such as PgBouncer. For MySQL/MariaDB the
+     * behind transaction-pooling proxies such as PgBouncer. Redshift only gets the
+     * statement timeout, since it has no lock timeout setting. For MySQL/MariaDB the
      * statement timeout is set per session before every unit of work.
      *
      * @param connection the pooled connection, never null
@@ -58,6 +59,10 @@ public final class ReadOnlySession implements AutoCloseable {
                     case POSTGRESQL -> {
                         statement.execute("SET LOCAL statement_timeout = " + statementTimeoutMs);
                         statement.execute("SET LOCAL lock_timeout = " + lockTimeoutMs);
+                    }
+                    case REDSHIFT -> {
+                        // Redshift has no lock_timeout parameter.
+                        statement.execute("SET LOCAL statement_timeout = " + statementTimeoutMs);
                     }
                     case MYSQL -> {
                         statement.execute("SET SESSION max_execution_time = " + statementTimeoutMs);

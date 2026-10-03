@@ -161,6 +161,7 @@ Ask Claude: *"Show me the top 5 users by order count"*
 | MySQL          | Supported |
 | MariaDB        | Supported |
 | SQLite         | Supported |
+| Amazon Redshift | Supported (EXPLAIN without ANALYZE, TEXT format only) |
 
 ## Safety
 
@@ -333,9 +334,9 @@ sql-mcp:
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
 | `name` | string | Yes | - | Unique identifier used in tool calls |
-| `type` | string | Yes | - | Database engine: `postgresql`, `mysql`, `mariadb`, `sqlite` |
+| `type` | string | Yes | - | Database engine: `postgresql`, `mysql`, `mariadb`, `sqlite`, `redshift` |
 | `host` | string | Yes* | - | Database host (*not required for SQLite) |
-| `port` | int | No | Auto | Default: 5432 (PostgreSQL), 3306 (MySQL/MariaDB) |
+| `port` | int | No | Auto | Default: 5432 (PostgreSQL), 3306 (MySQL/MariaDB), 5439 (Redshift) |
 | `database` | string | Yes | - | Database name or file path (SQLite) |
 | `username` | string | Yes* | - | Database user (*not required for SQLite) |
 | `password` | string | Yes* | - | Database password (*not required for SQLite) |

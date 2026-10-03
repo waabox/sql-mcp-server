@@ -24,6 +24,10 @@ import java.util.Objects;
  *       are rejected.</li>
  *   <li>SQLite: {@code --} comments, non-nested block comments, double-quoted,
  *       backtick and bracket identifiers.</li>
+ *   <li>Redshift: conservative PostgreSQL rules. {@code --} comments, non-nested
+ *       block comments, standard strings and double-quoted identifiers. Backticks
+ *       and dollar signs have no special meaning, and backslashes inside string
+ *       literals are rejected because their escaping behavior is ambiguous.</li>
  * </ul>
  *
  * <p>Comments are dropped from the output.
@@ -80,7 +84,7 @@ final class SqlTokenizer {
                 } else {
                     readQuotedIdentifier('"', '"');
                 }
-            } else if (c == '`' && dialect != DatabaseType.POSTGRESQL) {
+            } else if (c == '`' && dialect != DatabaseType.POSTGRESQL && dialect != DatabaseType.REDSHIFT) {
                 readQuotedIdentifier('`', '`');
             } else if (c == '[' && dialect == DatabaseType.SQLITE) {
                 readQuotedIdentifier('[', ']');
@@ -145,6 +149,9 @@ final class SqlTokenizer {
         StringBuilder value = new StringBuilder();
         while (pos < sql.length()) {
             char c = sql.charAt(pos);
+            if (c == '\\' && dialect == DatabaseType.REDSHIFT) {
+                throw new SqlSyntaxException("Backslashes in string literals are not allowed for Redshift");
+            }
             if (backslashEscapes && c == '\\' && pos + 1 < sql.length()) {
                 value.append(sql.charAt(pos + 1));
                 pos += 2;
