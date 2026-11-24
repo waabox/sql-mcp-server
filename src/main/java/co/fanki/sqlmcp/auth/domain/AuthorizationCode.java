@@ -1,5 +1,9 @@
 package co.fanki.sqlmcp.auth.domain;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 import java.util.Objects;
 
 /**
@@ -83,6 +87,26 @@ public final class AuthorizationCode {
      */
     public String codeChallenge() {
         return codeChallenge;
+    }
+
+    /**
+     * Checks a PKCE code verifier against the challenge of this code.
+     *
+     * <p>Business rule: only the S256 method is supported, compared in constant time.
+     *
+     * @param verifier the code verifier presented at the token endpoint
+     * @return true when its SHA-256 matches the code challenge
+     */
+    public boolean matchesVerifier(final String verifier) {
+        try {
+            final byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(verifier.getBytes(StandardCharsets.US_ASCII));
+            final String computed = Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+            return MessageDigest.isEqual(computed.getBytes(StandardCharsets.US_ASCII),
+                    codeChallenge.getBytes(StandardCharsets.US_ASCII));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
     }
 
 }

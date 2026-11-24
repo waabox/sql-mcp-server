@@ -1,5 +1,6 @@
 package co.fanki.sqlmcp.auth.domain;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 
@@ -50,6 +51,62 @@ public final class RegisteredClient {
      */
     public List<String> redirectUris() {
         return redirectUris;
+    }
+
+    /**
+     * Tells whether a redirect URI may be registered.
+     *
+     * <p>Business rule: only {@code https://} URIs and {@code http://} loopback URIs ({@code localhost},
+     * {@code 127.0.0.1}) without a fragment are accepted.
+     *
+     * @param uri the redirect URI
+     * @return true when it may be registered
+     */
+    public static boolean isAcceptableRedirectUri(final String uri) {
+        final URI parsed = parse(uri);
+        if (parsed == null || parsed.getHost() == null || parsed.getRawFragment() != null) {
+            return false;
+        }
+        return "https".equals(parsed.getScheme()) || isLoopback(parsed);
+    }
+
+    /**
+     * Tells whether a requested redirect URI matches one of the registered ones.
+     *
+     * <p>Business rule: the match is exact, except that a loopback URI may use a different port than the
+     * registered one (RFC 8252).
+     *
+     * @param requested the redirect URI of the authorization request
+     * @return true when it is allowed
+     */
+    public boolean allows(final String requested) {
+        final URI wanted = parse(requested);
+        for (final String registered : redirectUris) {
+            if (registered.equals(requested)) {
+                return true;
+            }
+            final URI known = parse(registered);
+            if (wanted != null && known != null && isLoopback(known) && isLoopback(wanted)
+                    && Objects.equals(known.getHost(), wanted.getHost())
+                    && Objects.equals(known.getRawPath(), wanted.getRawPath())
+                    && Objects.equals(known.getRawQuery(), wanted.getRawQuery())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLoopback(final URI uri) {
+        return "http".equals(uri.getScheme())
+                && ("localhost".equals(uri.getHost()) || "127.0.0.1".equals(uri.getHost()));
+    }
+
+    private static URI parse(final String uri) {
+        try {
+            return URI.create(uri);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
 }
