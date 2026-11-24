@@ -4,6 +4,7 @@ import co.fanki.sqlmcp.auth.domain.GroupResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Clock;
 import java.util.Set;
 
 /**
@@ -25,6 +26,16 @@ public class AuthConfig {
     @Bean
     public GroupResolver emptyGroupResolver() {
         return email -> Set.of();
+    }
+
+    /**
+     * Creates the clock used to issue and expire tokens.
+     *
+     * @return the system UTC clock
+     */
+    @Bean
+    public Clock clock() {
+        return Clock.systemUTC();
     }
 
 }
