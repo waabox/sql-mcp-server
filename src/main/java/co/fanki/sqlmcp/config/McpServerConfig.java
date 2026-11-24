@@ -1,5 +1,9 @@
 package co.fanki.sqlmcp.config;
 
+import co.fanki.sqlmcp.auth.domain.Caller;
+import co.fanki.sqlmcp.auth.domain.ConnectionAccess;
+import co.fanki.sqlmcp.auth.domain.CurrentCaller;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -8,7 +12,10 @@ import io.modelcontextprotocol.server.McpStatelessSyncServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -21,6 +28,7 @@ import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Configuration for the MCP server.
@@ -44,6 +52,7 @@ public class McpServerConfig {
     private static final String SERVER_NAME = "sql-mcp-server";
     private static final String SERVER_VERSION = "1.1.0";
     private static final String MCP_ENDPOINT = "/mcp";
+    private static final String CALLER_CONTEXT_KEY = "caller";
 
     /**
      * Creates the ObjectMapper for JSON serialization.
@@ -172,18 +181,25 @@ public class McpServerConfig {
      * <p>The tool specifications are shared with the STDIO server; none of them
      * uses the session exchange, so they are adapted to stateless handlers.
      *
+     * <p>Business rule: every tool call runs as the caller found in the transport context, and a call that names
+     * a connection the caller may not use is rejected with the same error as an unknown connection.
+     *
      * @param transport the Streamable HTTP transport
      * @param tools the list of tool specifications to register
+     * @param connectionAccess decides which connections a caller may use
+     * @param objectMapper the ObjectMapper for JSON serialization
      * @return the configured MCP server
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
     public McpStatelessSyncServer httpMcpServer(
             final WebMvcStatelessServerTransport transport,
-            final List<McpServerFeatures.SyncToolSpecification> tools) {
+            final List<McpServerFeatures.SyncToolSpecification> tools,
+            final ConnectionAccess connectionAccess,
+            final ObjectMapper objectMapper) {
 
         List<McpStatelessServerFeatures.SyncToolSpecification> statelessTools = tools.stream()
-                .map(McpServerConfig::toStateless)
+                .map(spec -> toStateless(spec, connectionAccess, objectMapper))
                 .toList();
 
         return McpServer.sync(transport)
@@ -194,10 +210,38 @@ public class McpServerConfig {
     }
 
     private static McpStatelessServerFeatures.SyncToolSpecification toStateless(
-            final McpServerFeatures.SyncToolSpecification spec) {
+            final McpServerFeatures.SyncToolSpecification spec,
+            final ConnectionAccess connectionAccess,
+            final ObjectMapper objectMapper) {
         return new McpStatelessServerFeatures.SyncToolSpecification(
                 spec.tool(),
-                (context, request) -> spec.callHandler().apply(null, request));
+                (context, request) -> {
+                    final Caller caller = callerOf(context);
+                    final Map<String, Object> arguments = request.arguments();
+                    if (arguments != null && arguments.get("connection") instanceof String name
+                            && !connectionAccess.canUse(caller, name)) {
+                        return connectionNotFound(name, objectMapper);
+                    }
+                    return CurrentCaller.runAs(caller, () -> spec.callHandler().apply(null, request));
+                });
+    }
+
+    private static Caller callerOf(final McpTransportContext context) {
+        if (context != null && context.get(CALLER_CONTEXT_KEY) instanceof Caller caller) {
+            return caller;
+        }
+        return Caller.anonymous();
+    }
+
+    @SuppressWarnings("deprecation")
+    private static CallToolResult connectionNotFound(final String name, final ObjectMapper objectMapper) {
+        try {
+            final String json = objectMapper.writeValueAsString(
+                    Map.of("success", false, "error", "Connection profile not found: " + name));
+            return new CallToolResult(List.of(new TextContent(json)), true);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Cannot serialize error", e);
+        }
     }
 
     // =========================================================================

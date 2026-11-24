@@ -1,7 +1,8 @@
 package co.fanki.sqlmcp.connection.application;
 
+import co.fanki.sqlmcp.auth.domain.ConnectionAccess;
+import co.fanki.sqlmcp.auth.domain.CurrentCaller;
 import co.fanki.sqlmcp.connection.domain.ConnectionProfile;
-import co.fanki.sqlmcp.connection.domain.ConnectionProfileRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -40,19 +41,19 @@ public class ListConnectionsTool {
             }
             """;
 
-    private final ConnectionProfileRepository profileRepository;
+    private final ConnectionAccess connectionAccess;
     private final ObjectMapper objectMapper;
 
     /**
      * Creates a new ListConnectionsTool.
      *
-     * @param profileRepository the repository for connection profiles
+     * @param connectionAccess decides which connections the caller may see
      * @param objectMapper the JSON object mapper
      */
     public ListConnectionsTool(
-            final ConnectionProfileRepository profileRepository,
+            final ConnectionAccess connectionAccess,
             final ObjectMapper objectMapper) {
-        this.profileRepository = Objects.requireNonNull(profileRepository);
+        this.connectionAccess = Objects.requireNonNull(connectionAccess);
         this.objectMapper = Objects.requireNonNull(objectMapper);
     }
 
@@ -69,7 +70,7 @@ public class ListConnectionsTool {
         return new McpServerFeatures.SyncToolSpecification(
                 tool,
                 (exchange, arguments) -> {
-                    List<ConnectionProfile> profiles = profileRepository.findAll();
+                    List<ConnectionProfile> profiles = connectionAccess.visibleConnections(CurrentCaller.get());
 
                     List<Map<String, Object>> connectionList = profiles.stream()
                             .map(this::toSafeMap)

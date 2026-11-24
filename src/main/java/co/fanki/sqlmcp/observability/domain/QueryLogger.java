@@ -1,5 +1,6 @@
 package co.fanki.sqlmcp.observability.domain;
 
+import co.fanki.sqlmcp.auth.domain.CurrentCaller;
 import co.fanki.sqlmcp.observability.domain.QueryAuditLog.ExecutionStatus;
 import co.fanki.sqlmcp.observability.domain.QueryAuditLog.QueryType;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -72,6 +73,7 @@ public class QueryLogger {
 
         QueryAuditLog auditLog = QueryAuditLog.builder()
                 .connectionName(connectionName)
+                .clientInfo(CurrentCaller.get().auditName())
                 .queryType(queryType)
                 .query(query)
                 .status(ExecutionStatus.SUCCESS)
@@ -102,6 +104,7 @@ public class QueryLogger {
 
         QueryAuditLog auditLog = QueryAuditLog.builder()
                 .connectionName(connectionName)
+                .clientInfo(CurrentCaller.get().auditName())
                 .queryType(queryType)
                 .query(query)
                 .status(ExecutionStatus.FAILURE)
@@ -127,6 +130,7 @@ public class QueryLogger {
 
         QueryAuditLog auditLog = QueryAuditLog.builder()
                 .connectionName(connectionName)
+                .clientInfo(CurrentCaller.get().auditName())
                 .queryType(QueryType.SELECT)
                 .query(query)
                 .status(ExecutionStatus.VALIDATION_ERROR)
