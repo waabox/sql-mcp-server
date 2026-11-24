@@ -1,5 +1,6 @@
 package co.fanki.sqlmcp.config;
 
+import co.fanki.sqlmcp.auth.application.HttpAuthenticationFilter;
 import co.fanki.sqlmcp.auth.domain.Caller;
 import co.fanki.sqlmcp.auth.domain.ConnectionAccess;
 import co.fanki.sqlmcp.auth.domain.CurrentCaller;
@@ -151,6 +152,9 @@ public class McpServerConfig {
     /**
      * Creates the stateless Streamable HTTP transport for server deployment.
      *
+     * <p>The caller identified by the authentication filter is passed to the tool handlers in the transport
+     * context; when absent the caller is anonymous.
+     *
      * @param objectMapper the ObjectMapper for JSON serialization
      * @return the configured Streamable HTTP transport
      */
@@ -160,6 +164,9 @@ public class McpServerConfig {
         return WebMvcStatelessServerTransport.builder()
                 .objectMapper(objectMapper)
                 .messageEndpoint(MCP_ENDPOINT)
+                .contextExtractor(request -> McpTransportContext.create(Map.of(
+                        CALLER_CONTEXT_KEY,
+                        request.attribute(HttpAuthenticationFilter.CALLER_ATTRIBUTE).orElse(Caller.anonymous()))))
                 .build();
     }
 
