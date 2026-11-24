@@ -55,6 +55,46 @@ sql-mcp:
   http:
     auth-token: ${SQL_MCP_AUTH_TOKEN:}
 
+  # HTTP transport only: optional Google login. When disabled (default) the
+  # server behaves as described above. When enabled, people log in with their
+  # Google account (the server is the OAuth authorization server for MCP
+  # clients) and the "access" mapping below decides which connections they may
+  # use. The shared auth-token keeps working alongside it when set.
+  auth:
+    # Public base URL of this server, e.g. https://sql-mcp.example.com
+    issuer: ${SQL_MCP_PUBLIC_URL:}
+    # Secret shared by all replicas to encrypt tokens (at least 32 bytes).
+    # Rotating it logs everyone out.
+    signing-key: ${SQL_MCP_SIGNING_KEY:}
+    access-token-ttl: 1h
+    # Sliding: every refresh issues a new refresh token with a fresh lifetime
+    refresh-token-ttl: 30d
+    google:
+      enabled: false
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+      # Accepted Google Workspace domains (hosted domain claim). Empty rejects every login.
+      allowed-domains: []
+      # Service account key (JSON content) with domain-wide delegation, used to read groups
+      service-account-key: ${GOOGLE_SA_KEY:}
+      # Workspace admin the service account impersonates
+      admin-email: ${GOOGLE_ADMIN_EMAIL:}
+      # How long a person's groups are cached; group or suspension changes apply after this
+      groups-cache-ttl: 5m
+      # Endpoints, overridable for tests
+      authorize-url: https://accounts.google.com/o/oauth2/v2/auth
+      token-url: https://oauth2.googleapis.com/token
+      directory-url: https://admin.googleapis.com
+
+  # Which connections each Google group may use (Google login only). "*" means
+  # every connection. A person gets the union of the entries of all their groups.
+  # access:
+  #   - group: data@example.com
+  #     connections: [analytics, prod-replica]
+  #   - group: sre@example.com
+  #     connections: ["*"]
+  access: []
+
 # Server configuration (for HTTP transport mode)
 server:
   # Port defaults: 8080 with the http transport; random (0) with stdio, where

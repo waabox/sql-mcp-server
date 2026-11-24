@@ -205,12 +205,18 @@ works in layers:
 
 - **Audit log**: Every query attempt is written to `logs/audit.log` as one JSON
   line: connection, query, status (`SUCCESS`, `FAILURE`, `VALIDATION_ERROR`),
-  duration and row count.
+  duration and row count, and who ran it (`clientInfo`: the person's email,
+  `shared-token` or `anonymous`).
 
 - **HTTP authentication**: With the HTTP transport, set `sql-mcp.http.auth-token`
   (or `SQL_MCP_AUTH_TOKEN`) to require `Authorization: Bearer <token>` on every
   request except `/health`. Without a token the server runs unauthenticated and
-  logs a warning at startup.
+  logs a warning at startup. To identify each person and limit the connections
+  they can use, enable [Google login](#google-login-and-group-access).
+
+- **Per-person access**: with Google login, Google Workspace groups decide which
+  connections each person may use. A connection the person may not use is
+  reported exactly like one that does not exist.
 
 **Important:** These layers do not replace database permissions. Use a dedicated
 database user that can only read what Claude needs. On PostgreSQL:
@@ -361,6 +367,134 @@ Connections are fully isolated — each database maintains its own connection po
 and queries are routed to the correct engine. You can switch between connections
 freely within the same session.
 
+## Google login and group access
+
+Use this when the server is shared with an organization and you want to decide,
+per person, which databases they can use. It is optional: when disabled (the
+default) the server behaves exactly as before.
+
+People log in with their Google Workspace account. The server follows the
+standard MCP authorization flow (OAuth 2.1 with dynamic client registration and
+PKCE), so any compliant client, such as Claude Code or ChatGPT, only needs the
+server URL. Google Workspace **groups** decide the connections each person may
+use, and the audit log records who ran each query.
+
+### Authentication modes
+
+| `auth-token` | Google login | Behaviour |
+|---|---|---|
+| empty | disabled | Open, a warning is logged at startup |
+| set | disabled | Shared token only |
+| empty | enabled | Google login only |
+| set | enabled | Both accepted. The shared token can use every connection |
+
+To disable the shared token, leave `auth-token` empty.
+
+### 1. Create the Google OAuth client
+
+In the Google Cloud console, create an OAuth client of type **Web application**
+and add this authorized redirect URI:
+
+```
+<public URL>/oauth/google/callback
+```
+
+Use the client id and secret as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+Only accounts of a Workspace domain in `allowed-domains` can log in: the
+server requires Google's hosted domain (`hd`) claim, so personal Google
+accounts are not supported, even on a company address.
+
+### 2. Create the service account that reads groups
+
+1. In the same project, enable the **Admin SDK API**.
+2. Create a service account and a JSON key. Its content is `GOOGLE_SA_KEY`.
+3. In the Workspace admin console (Security, API controls, Domain-wide
+   delegation), authorize the service account's client id with these two
+   read-only scopes:
+   - `https://www.googleapis.com/auth/admin.directory.group.readonly`
+   - `https://www.googleapis.com/auth/admin.directory.user.readonly`
+4. Choose `admin-email`: a Workspace admin the service account impersonates
+   (`GOOGLE_ADMIN_EMAIL`). It needs to be allowed to read users and groups.
+
+Groups are read from the Admin SDK Directory API, which works on every
+Workspace edition. Nested groups are expanded up to 10 levels. A suspended or
+deleted user has no groups and so no access.
+
+### 3. Configure the server
+
+```yaml
+sql-mcp:
+  connections:
+    - name: analytics
+      # ...
+    - name: prod-replica
+      # ...
+  auth:
+    issuer: https://sql-mcp.example.com        # SQL_MCP_PUBLIC_URL
+    signing-key: ${SQL_MCP_SIGNING_KEY}        # at least 32 bytes, same on every replica
+    google:
+      enabled: true
+      client-id: ${GOOGLE_CLIENT_ID}
+      client-secret: ${GOOGLE_CLIENT_SECRET}
+      allowed-domains: [example.com]
+      service-account-key: ${GOOGLE_SA_KEY}
+      admin-email: ${GOOGLE_ADMIN_EMAIL}
+      groups-cache-ttl: 5m
+  access:
+    - group: data@example.com
+      connections: [analytics, prod-replica]
+    - group: sre@example.com
+      connections: ["*"]
+```
+
+A person gets the union of the connections of every group they belong to, and
+none when no group matches. `"*"` means every configured connection. The server
+refuses to start when Google login is enabled and a required value is missing
+(or `signing-key` is shorter than 32 bytes), or when `access` names a
+connection that does not exist. An empty `allowed-domains` rejects every login.
+Everything works with several replicas as long as they share `signing-key`:
+there is no database and nothing else to run.
+
+A connection the person may not use behaves exactly like one that does not
+exist, so connection names are not revealed. `list_connections` only shows the
+allowed ones.
+
+### 4. Add the server to your client
+
+Claude Code:
+
+```bash
+claude mcp add --transport http sql https://sql-mcp.example.com/mcp
+```
+
+Then run `/mcp` in Claude Code and choose to authenticate: a browser opens for
+the Google login and a page asks you to approve the client.
+
+ChatGPT: add a custom connector (MCP) with the URL
+`https://sql-mcp.example.com/mcp` and choose OAuth as the authentication. The
+client registers itself and sends you through the same login.
+
+### Token lifetimes and revocation
+
+| Token | Lifetime |
+|-------|----------|
+| Authorization code | 60 seconds |
+| Access token | `access-token-ttl` (default 1 hour) |
+| Refresh token | `refresh-token-ttl` (default 30 days), sliding: every refresh returns a new one |
+
+Tokens are encrypted with `signing-key` and nothing is stored, so:
+
+- Group membership is **not** in the token. It is read on every request and
+  cached for `groups-cache-ttl` (default 5 minutes). Removing someone from a
+  group, or suspending them, takes effect within that time. If Google cannot be
+  reached and there is no cached value, the request is denied.
+- Individual tokens cannot be revoked. A stolen refresh token works until it
+  expires or the person loses access in Google. To log everyone out, rotate
+  `signing-key`. Old refresh tokens are not invalidated when a new one is
+  issued, so refresh token reuse is not detected.
+- Authorization codes are not strictly single use. Their short lifetime and
+  PKCE keep a stolen code useless.
+
 ## Deployment & Operations
 
 This section is for whoever runs the server as a shared service (HTTP transport).
@@ -421,6 +555,14 @@ Rules to keep in mind:
 | `SQL_MCP_TRANSPORT` | `http` | `http` for a shared server, `stdio` when Claude Code starts the jar locally. Before v1.1.0 the default was `stdio` |
 | `SERVER_PORT` | `8080` (http), random (stdio) | HTTP port. In stdio mode it only serves `/health`, so it defaults to a random free port and several Claude sessions never collide |
 | `SQL_MCP_AUTH_TOKEN` | empty | Bearer token required on `/mcp`. Empty means **no authentication** (a warning is logged at startup) |
+| `SQL_MCP_PUBLIC_URL` | empty | Public base URL of the server (Google login only) |
+| `SQL_MCP_SIGNING_KEY` | empty | Secret, at least 32 bytes, shared by all replicas, that encrypts the tokens (Google login only) |
+| `SQL_MCP_AUTH_GOOGLE_ENABLED` | `false` | Turns on Google login |
+| `SQL_MCP_AUTH_GOOGLE_ALLOWED_DOMAINS_<n>` | empty | Accepted Workspace domains. Empty rejects every login |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty | Google OAuth client (Google login only) |
+| `GOOGLE_SA_KEY` | empty | Service account key, JSON content (Google login only) |
+| `GOOGLE_ADMIN_EMAIL` | empty | Workspace admin the service account impersonates (Google login only) |
+| `SQL_MCP_ACCESS_<n>_GROUP`, `SQL_MCP_ACCESS_<n>_CONNECTIONS_<m>` | empty | Group to connections mapping (Google login only) |
 | `SQL_MCP_QUERY_DEFAULT_TIMEOUT_MS` | `30000` | Timeout per query when the caller does not set one |
 | `SQL_MCP_QUERY_MAX_TIMEOUT_MS` | `120000` | Upper bound for any query timeout |
 | `SQL_MCP_QUERY_LOCK_TIMEOUT_MS` | `5000` | How long a query may wait for a lock before failing |
@@ -537,12 +679,13 @@ The audit log records **every query attempt**, including rejected ones:
 `status` is `SUCCESS`, `FAILURE` or `VALIDATION_ERROR`. **The audit log is only
 written to the file, not to stdout.** Mount `/app/logs` on a persistent volume
 or ship it with a sidecar or log agent, otherwise it is lost when the container
-restarts. The log does not record *who* made the request: all clients share the
-same token.
+restarts. `clientInfo` records who made the request: the person's email with
+Google login, `shared-token` for the shared token, `anonymous` when the server
+runs without authentication.
 
 ### Security checklist
 
-- [ ] `SQL_MCP_AUTH_TOKEN` is set (long random value, stored in a secret manager)
+- [ ] `SQL_MCP_AUTH_TOKEN` is set (long random value, stored in a secret manager), or Google login is enabled with a strong `SQL_MCP_SIGNING_KEY`
 - [ ] TLS is terminated in front of the server
 - [ ] Each connection uses a dedicated read-only database role, ideally on a replica
 - [ ] Sensitive tables are in the deny list (the query results are sent to the LLM)
