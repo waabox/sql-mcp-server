@@ -64,4 +64,15 @@ class ConnectionAccessTest {
         assertFalse(access.canUse(caller, "billing"));
     }
 
+    @Test
+    void whenCheckingAccess_givenGroupResolutionFails_shouldDenyEveryConnection() {
+        final ConnectionAccess access = access(email -> {
+            throw new GroupResolutionException("Google is down");
+        });
+        final Caller caller = Caller.googleUser("ana@example.com");
+
+        assertTrue(access.visibleConnections(caller).isEmpty());
+        assertFalse(access.canUse(caller, "analytics"));
+    }
+
 }

@@ -2,6 +2,8 @@ package co.fanki.sqlmcp.auth.domain;
 
 import co.fanki.sqlmcp.connection.domain.ConnectionProfile;
 import co.fanki.sqlmcp.connection.domain.ConnectionProfileRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -13,12 +15,15 @@ import java.util.stream.Collectors;
  * Decides which connection profiles a caller may use.
  *
  * <p>Business rules: local, anonymous and shared-token callers may use every connection; a Google user may use
- * the connections that the access policy grants to the user's groups, and none when there is no match.
+ * the connections that the access policy grants to the user's groups, and none when there is no match or when the groups cannot be resolved
+ * (fail closed).
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 @Component
 public class ConnectionAccess {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ConnectionAccess.class);
 
     private final ConnectionProfileRepository profileRepository;
     private final AccessPolicy accessPolicy;
@@ -75,7 +80,14 @@ public class ConnectionAccess {
     private Set<String> allowedNames(final Caller caller, final List<ConnectionProfile> all) {
         final Set<String> allNames = all.stream().map(ConnectionProfile::name).collect(Collectors.toSet());
         final String email = caller.email().orElseThrow();
-        return accessPolicy.connectionsFor(groupResolver.groupsOf(email), allNames);
+        final Set<String> groups;
+        try {
+            groups = groupResolver.groupsOf(email);
+        } catch (final GroupResolutionException e) {
+            LOG.warn("Denying access to {}: groups could not be resolved: {}", email, e.getMessage());
+            return Set.of();
+        }
+        return accessPolicy.connectionsFor(groups, allNames);
     }
 
 }
