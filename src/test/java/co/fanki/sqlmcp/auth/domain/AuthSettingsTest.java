@@ -1,5 +1,6 @@
 package co.fanki.sqlmcp.auth.domain;
 
+import co.fanki.sqlmcp.connection.domain.ConnectionProfileRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -39,13 +40,59 @@ class AuthSettingsTest {
     }
 
     @Test
-    void whenStarting_givenGoogleEnabledAndMissingAdminEmail_shouldFailNamingTheKey() {
+    void whenStarting_givenGoogleEnabledUsersOnlyAndNoServiceAccount_shouldStart() {
+        final AuthSettings settings = complete();
+        settings.getGoogle().setServiceAccountKey("");
+        settings.getGoogle().setAdminEmail("");
+        final AccessPolicy policy = policy(AccessPolicy.Entry.ofUsers(List.of("ana@example.com"), List.of("*")));
+
+        assertDoesNotThrow(settings::validate);
+        assertDoesNotThrow(() -> new GroupAccessSettingsValidator(settings, policy).validate());
+    }
+
+    @Test
+    void whenStarting_givenGroupEntryAndNoServiceAccount_shouldFailNamingTheKey() {
+        final AuthSettings settings = complete();
+        settings.getGoogle().setServiceAccountKey("");
+        final AccessPolicy policy = policy(AccessPolicy.Entry.ofGroup("data@example.com", List.of("*")));
+
+        final IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> new GroupAccessSettingsValidator(settings, policy).validate());
+
+        assertTrue(error.getMessage().contains("sql-mcp.auth.google.service-account-key"), error.getMessage());
+    }
+
+    @Test
+    void whenStarting_givenGroupEntryAndMissingAdminEmail_shouldFailNamingTheKey() {
         final AuthSettings settings = complete();
         settings.getGoogle().setAdminEmail(" ");
+        final AccessPolicy policy = policy(AccessPolicy.Entry.ofGroup("data@example.com", List.of("*")));
 
-        final IllegalStateException error = assertThrows(IllegalStateException.class, settings::validate);
+        final IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> new GroupAccessSettingsValidator(settings, policy).validate());
 
         assertTrue(error.getMessage().contains("sql-mcp.auth.google.admin-email"), error.getMessage());
+    }
+
+    @Test
+    void whenStarting_givenGroupEntryAndGoogleDisabled_shouldNotRequireServiceAccount() {
+        final AuthSettings settings = new AuthSettings();
+        final AccessPolicy policy = policy(AccessPolicy.Entry.ofGroup("data@example.com", List.of("*")));
+
+        assertDoesNotThrow(() -> new GroupAccessSettingsValidator(settings, policy).validate());
+    }
+
+    @Test
+    void whenStarting_givenGroupEntryAndServiceAccountSet_shouldPass() {
+        final AccessPolicy policy = policy(AccessPolicy.Entry.ofGroup("data@example.com", List.of("*")));
+
+        assertDoesNotThrow(() -> new GroupAccessSettingsValidator(complete(), policy).validate());
+    }
+
+    private static AccessPolicy policy(final AccessPolicy.Entry entry) {
+        final AccessPolicy policy = new AccessPolicy(new ConnectionProfileRepository());
+        policy.setAccess(List.of(entry));
+        return policy;
     }
 
     @Test

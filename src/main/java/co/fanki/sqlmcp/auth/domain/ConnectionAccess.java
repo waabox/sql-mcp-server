@@ -15,7 +15,8 @@ import java.util.stream.Collectors;
  * Decides which connection profiles a caller may use.
  *
  * <p>Business rules: local, anonymous and shared-token callers may use every connection; a Google user may use
- * the connections that the access policy grants to the user's groups, and none when there is no match or when the
+ * the connections that the access policy grants to the user or to the user's groups (groups are only resolved when
+ * the policy maps some), and none when there is no match or when the
  * groups cannot be resolved (fail closed).
  *
  * @author waabox(emiliano[at]fanki[dot]co)
@@ -80,14 +81,16 @@ public class ConnectionAccess {
     private Set<String> allowedNames(final Caller caller, final List<ConnectionProfile> all) {
         final Set<String> allNames = all.stream().map(ConnectionProfile::name).collect(Collectors.toSet());
         final String email = caller.email().orElseThrow();
-        final Set<String> groups;
-        try {
-            groups = groupResolver.groupsOf(email);
-        } catch (final GroupResolutionException e) {
-            LOG.warn("Denying access to {}: groups could not be resolved: {}", email, e.getMessage());
-            return Set.of();
+        Set<String> groups = Set.of();
+        if (accessPolicy.usesGroups()) {
+            try {
+                groups = groupResolver.groupsOf(email);
+            } catch (final GroupResolutionException e) {
+                LOG.warn("Denying access to {}: groups could not be resolved: {}", email, e.getMessage());
+                return Set.of();
+            }
         }
-        return accessPolicy.connectionsFor(groups, allNames);
+        return accessPolicy.connectionsFor(email, groups, allNames);
     }
 
 }

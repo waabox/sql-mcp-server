@@ -20,13 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ConnectionAccessTest {
 
     private static ConnectionAccess access(final GroupResolver resolver) {
+        return access(resolver, AccessPolicy.Entry.ofGroup("data@example.com", List.of("analytics")));
+    }
+
+    private static ConnectionAccess access(final GroupResolver resolver, final AccessPolicy.Entry entry) {
         final ConnectionProfileRepository repository = new ConnectionProfileRepository();
         for (final String name : List.of("analytics", "billing")) {
             repository.register(ConnectionProfile.create(
                     name, DatabaseType.POSTGRESQL, "localhost", 5432, "db", "u", "p", "public", true));
         }
         final AccessPolicy policy = new AccessPolicy(repository);
-        policy.setAccess(List.of(AccessPolicy.Entry.of("data@example.com", List.of("analytics"))));
+        policy.setAccess(List.of(entry));
         return new ConnectionAccess(repository, policy, resolver);
     }
 
@@ -73,6 +77,19 @@ class ConnectionAccessTest {
 
         assertTrue(access.visibleConnections(caller).isEmpty());
         assertFalse(access.canUse(caller, "analytics"));
+    }
+
+    @Test
+    void whenCheckingAccess_givenUsersOnlyPolicy_shouldNotCallGroupResolver() {
+        final ConnectionAccess access = access(
+                email -> {
+                    throw new AssertionError("the group resolver must not be called");
+                },
+                AccessPolicy.Entry.ofUsers(List.of("Ana@example.com"), List.of("analytics")));
+
+        assertEquals(List.of("analytics"), names(access.visibleConnections(Caller.googleUser("ana@example.com"))));
+        assertTrue(access.canUse(Caller.googleUser("ana@example.com"), "analytics"));
+        assertFalse(access.canUse(Caller.googleUser("pedro@example.com"), "analytics"));
     }
 
 }

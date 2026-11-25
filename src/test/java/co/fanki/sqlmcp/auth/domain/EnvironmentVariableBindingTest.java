@@ -58,4 +58,19 @@ class EnvironmentVariableBindingTest {
         assertEquals(List.of("*"), entries.get(1).getConnections());
     }
 
+    @Test
+    void whenBindingAccess_givenUsersEnvironmentVariables_shouldBindUsersAndConnections() {
+        final Binder binder = binderFor(Map.of(
+                "SQL_MCP_ACCESS_0_USERS_0", "ana@example.com",
+                "SQL_MCP_ACCESS_0_USERS_1", "pedro@example.com",
+                "SQL_MCP_ACCESS_0_CONNECTIONS_0", "analytics"));
+
+        final List<AccessPolicy.Entry> entries = binder
+                .bind("sql-mcp.access", Bindable.listOf(AccessPolicy.Entry.class)).get();
+
+        assertEquals(1, entries.size());
+        assertEquals(List.of("ana@example.com", "pedro@example.com"), entries.get(0).getUsers());
+        assertEquals(List.of("analytics"), entries.get(0).getConnections());
+    }
+
 }

@@ -17,8 +17,9 @@ import java.util.Set;
  * Authentication settings, bound from {@code sql-mcp.auth}.
  *
  * <p>Business rules: when Google login is enabled the application refuses to start unless the issuer, the signing
- * key (at least 32 bytes), the Google client id and secret, the service account key and the admin email are all
- * present; a missing value never relaxes authentication. The issuer must be an absolute URL without path, query or
+ * key (at least 32 bytes) and the Google client id and secret are all present; a missing value never relaxes
+ * authentication. The service account key and the admin email are only needed to map Google groups, and are
+ * checked by {@link GroupAccessSettingsValidator}. The issuer must be an absolute URL without path, query or
  * fragment, and must use https unless the host is loopback.
  *
  * @author waabox(emiliano[at]fanki[dot]co)
@@ -64,8 +65,6 @@ public class AuthSettings implements InitializingBean {
         }
         require(google.clientId, "sql-mcp.auth.google.client-id");
         require(google.clientSecret, "sql-mcp.auth.google.client-secret");
-        require(google.serviceAccountKey, "sql-mcp.auth.google.service-account-key");
-        require(google.adminEmail, "sql-mcp.auth.google.admin-email");
     }
 
     private void validateIssuer() {
@@ -102,7 +101,7 @@ public class AuthSettings implements InitializingBean {
         return new IllegalStateException("sql-mcp.auth.issuer " + reason);
     }
 
-    private static void require(final String value, final String key) {
+    static void require(final String value, final String key) {
         if (value == null || value.isBlank()) {
             throw new IllegalStateException("Google login is enabled but " + key + " is not set");
         }
