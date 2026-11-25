@@ -169,4 +169,26 @@ class HttpAuthenticationFilterIntegrationTest {
         }
     }
 
+    @Test
+    void whenStarting_givenGoogleEnabledWithRelaxedBooleanValue_shouldExposeOAuthEndpoints() throws Exception {
+        final int issuerPort = freePort();
+        final String issuer = "http://localhost:" + issuerPort;
+        startOnPort(issuerPort,
+                "sql-mcp.auth.issuer=" + issuer,
+                "sql-mcp.auth.signing-key=0123456789abcdef0123456789abcdef",
+                "sql-mcp.auth.google.enabled=ON",
+                "sql-mcp.auth.google.client-id=client-id",
+                "sql-mcp.auth.google.client-secret=client-secret",
+                "sql-mcp.auth.google.allowed-domains=example.com",
+                "sql-mcp.auth.google.service-account-key={}",
+                "sql-mcp.auth.google.admin-email=admin@example.com");
+
+        final HttpResponse<String> metadata = httpClient.send(HttpRequest.newBuilder(
+                URI.create(issuer + "/.well-known/oauth-protected-resource")).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, metadata.statusCode(), metadata.body());
+        assertEquals(401, post(INITIALIZE, null).statusCode());
+    }
+
 }

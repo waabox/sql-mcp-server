@@ -2,6 +2,7 @@ package co.fanki.sqlmcp.auth.application;
 
 import co.fanki.sqlmcp.auth.domain.AuthorizationCode;
 import co.fanki.sqlmcp.auth.domain.GoogleLogin;
+import co.fanki.sqlmcp.auth.domain.GoogleLoginEnabled;
 import co.fanki.sqlmcp.auth.domain.GoogleLoginException;
 import co.fanki.sqlmcp.auth.domain.InvalidTokenException;
 import co.fanki.sqlmcp.auth.domain.IssuedTokens;
@@ -11,7 +12,8 @@ import co.fanki.sqlmcp.auth.domain.RegisteredClient;
 import co.fanki.sqlmcp.auth.domain.TokenService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -41,8 +43,8 @@ import java.util.Map;
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 @RestController
-@ConditionalOnExpression("'${sql-mcp.auth.google.enabled:false}' == 'true'"
-        + " and '${sql-mcp.transport:http}' == 'http'")
+@Conditional(GoogleLoginEnabled.class)
+@ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
 public class OAuthController {
 
     private static final Logger LOG = LoggerFactory.getLogger(OAuthController.class);

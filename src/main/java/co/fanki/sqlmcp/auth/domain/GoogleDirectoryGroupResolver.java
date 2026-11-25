@@ -6,7 +6,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 @Primary
-@ConditionalOnProperty(name = "sql-mcp.auth.google.enabled", havingValue = "true")
+@Conditional(GoogleLoginEnabled.class)
 public class GoogleDirectoryGroupResolver implements GroupResolver {
 
     private static final Logger LOG = LoggerFactory.getLogger(GoogleDirectoryGroupResolver.class);

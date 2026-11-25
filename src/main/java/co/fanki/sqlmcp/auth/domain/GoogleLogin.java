@@ -2,7 +2,7 @@ package co.fanki.sqlmcp.auth.domain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -33,7 +33,7 @@ import java.util.Set;
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 @Component
-@ConditionalOnProperty(name = "sql-mcp.auth.google.enabled", havingValue = "true")
+@Conditional(GoogleLoginEnabled.class)
 public class GoogleLogin {
 
     private static final Set<String> ISSUERS = Set.of("https://accounts.google.com", "accounts.google.com");

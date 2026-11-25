@@ -1,7 +1,9 @@
 package co.fanki.sqlmcp.auth.application;
 
 import co.fanki.sqlmcp.auth.domain.AuthSettings;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import co.fanki.sqlmcp.auth.domain.GoogleLoginEnabled;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,8 +19,8 @@ import java.util.Map;
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 @RestController
-@ConditionalOnExpression("'${sql-mcp.auth.google.enabled:false}' == 'true'"
-        + " and '${sql-mcp.transport:http}' == 'http'")
+@Conditional(GoogleLoginEnabled.class)
+@ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
 public class OAuthMetadataController {
 
     private final String issuer;
