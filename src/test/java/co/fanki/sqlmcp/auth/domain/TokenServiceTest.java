@@ -41,7 +41,7 @@ class TokenServiceTest {
 
     @Test
     void whenVerifyingAccessToken_givenFreshToken_shouldReturnEmail() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
 
         assertEquals("ana@example.com", service.verifyAccessToken(tokens.accessToken()));
         assertEquals(3600L, tokens.expiresInSeconds());
@@ -49,7 +49,7 @@ class TokenServiceTest {
 
     @Test
     void whenVerifyingAccessToken_givenExpiredToken_shouldThrow() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
         clock.advance(Duration.ofHours(1).plusSeconds(1));
 
         assertThrows(InvalidTokenException.class, () -> service.verifyAccessToken(tokens.accessToken()));
@@ -57,31 +57,32 @@ class TokenServiceTest {
 
     @Test
     void whenVerifyingAccessToken_givenRefreshToken_shouldThrow() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
 
         assertThrows(InvalidTokenException.class, () -> service.verifyAccessToken(tokens.refreshToken()));
     }
 
     @Test
     void whenReadingRefreshToken_givenAccessToken_shouldThrow() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
 
         assertThrows(InvalidTokenException.class, () -> service.readRefreshToken(tokens.accessToken()));
     }
 
     @Test
     void whenReadingRefreshToken_givenFreshToken_shouldReturnEmailAndClient() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
 
         final RefreshGrant grant = service.readRefreshToken(tokens.refreshToken());
 
         assertEquals("ana@example.com", grant.email());
+        assertEquals("example.com", grant.hostedDomain());
         assertEquals("client-1", grant.clientId());
     }
 
     @Test
     void whenRedeemingCode_givenAccessToken_shouldThrow() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
 
         assertThrows(InvalidTokenException.class, () -> service.redeemAuthorizationCode(tokens.accessToken()));
     }
@@ -89,11 +90,13 @@ class TokenServiceTest {
     @Test
     void whenRedeemingCode_givenFreshCode_shouldReturnItsContents() {
         final String code = service.issueAuthorizationCode(
-                AuthorizationCode.of("ana@example.com", "client-1", "http://localhost:1/cb", "challenge"));
+                AuthorizationCode.of(
+                        "ana@example.com", "example.com", "client-1", "http://localhost:1/cb", "challenge"));
 
         final AuthorizationCode redeemed = service.redeemAuthorizationCode(code);
 
         assertEquals("ana@example.com", redeemed.email());
+        assertEquals("example.com", redeemed.hostedDomain());
         assertEquals("client-1", redeemed.clientId());
         assertEquals("http://localhost:1/cb", redeemed.redirectUri());
         assertEquals("challenge", redeemed.codeChallenge());
@@ -102,7 +105,8 @@ class TokenServiceTest {
     @Test
     void whenRedeemingCode_givenOlderThanSixtySeconds_shouldThrow() {
         final String code = service.issueAuthorizationCode(
-                AuthorizationCode.of("ana@example.com", "client-1", "http://localhost:1/cb", "challenge"));
+                AuthorizationCode.of(
+                        "ana@example.com", "example.com", "client-1", "http://localhost:1/cb", "challenge"));
         clock.advance(Duration.ofSeconds(61));
 
         assertThrows(InvalidTokenException.class, () -> service.redeemAuthorizationCode(code));
@@ -110,7 +114,7 @@ class TokenServiceTest {
 
     @Test
     void whenReadingToken_givenOtherSigningKey_shouldThrow() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
         final TokenService other = serviceWithKey("ffffffffffffffffffffffffffffffff");
 
         assertThrows(InvalidTokenException.class, () -> other.verifyAccessToken(tokens.accessToken()));
@@ -130,7 +134,7 @@ class TokenServiceTest {
 
     @Test
     void whenReadingToken_givenOtherIssuer_shouldThrow() {
-        final IssuedTokens tokens = service.issueTokens("ana@example.com", "client-1");
+        final IssuedTokens tokens = service.issueTokens("ana@example.com", "example.com", "client-1");
         final AuthSettings settings = new AuthSettings();
         settings.setIssuer("https://other.example.com");
         settings.setSigningKey(KEY);
@@ -155,7 +159,7 @@ class TokenServiceTest {
     void whenReadingLoginState_givenIssuedState_shouldReturnItsContents() {
         final String token = service.issueLoginState(
                 LoginState.of("client-1", "http://localhost:1/cb", "client-state", "challenge")
-                        .withEmail("ana@example.com"));
+                        .withIdentity("ana@example.com", "example.com"));
 
         final LoginState state = service.readLoginState(token);
 
@@ -164,6 +168,7 @@ class TokenServiceTest {
         assertEquals("client-state", state.clientState());
         assertEquals("challenge", state.codeChallenge());
         assertEquals("ana@example.com", state.email());
+        assertEquals("example.com", state.hostedDomain());
     }
 
     @Test

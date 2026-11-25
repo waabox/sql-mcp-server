@@ -49,7 +49,8 @@ class RegisteredClientTest {
 
     @Test
     void whenCheckingVerifier_givenRfc7636Example_shouldMatchOnlyTheRightVerifier() {
-        final AuthorizationCode code = AuthorizationCode.of("a@example.com", "c", "https://app.example.com/cb",
+        final AuthorizationCode code = AuthorizationCode.of(
+                "a@example.com", "example.com", "c", "https://app.example.com/cb",
                 "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
 
         assertTrue(code.matchesVerifier("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"));

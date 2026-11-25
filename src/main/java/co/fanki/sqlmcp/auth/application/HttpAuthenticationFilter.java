@@ -28,8 +28,8 @@ import java.util.Set;
  * <p>Business rules: {@code /health} and the OAuth and metadata endpoints this server publishes are public, matched
  * exactly on the request path (a path that merely starts like one of them, or that contains dot segments, is not
  * public). On every other path: with no shared token configured and Google login disabled the server is open and
- * the caller is anonymous (a warning is logged at startup); a bearer equal to the shared token identifies the shared-token
- * caller; when Google login is enabled a valid access token identifies the Google user; anything else is
+ * the caller is anonymous (a warning is logged at startup); a bearer equal to the shared token identifies the
+ * shared-token caller; when Google login is enabled a valid access token identifies the Google user; anything else is
  * rejected with 401 and a {@code WWW-Authenticate} header, which points at the protected resource metadata when
  * Google login is enabled so MCP clients can discover the login flow. The identified caller is stored in the
  * request attribute {@value #CALLER_ATTRIBUTE}.

@@ -69,6 +69,7 @@ class OAuthFlowIntegrationTest {
     private WireMockServer google;
     private ConfigurableApplicationContext context;
     private String issuer;
+    private int port;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -83,11 +84,18 @@ class OAuthFlowIntegrationTest {
         stubGroups("ana@example.com", "{\"groups\":[{\"email\":\"data@example.com\"}]}");
         stubGroups("data@example.com", "{}");
 
-        final int port;
         try (ServerSocket socket = new ServerSocket(0)) {
             port = socket.getLocalPort();
         }
         issuer = "http://localhost:" + port;
+        startContext("example.com");
+    }
+
+    /** Starts (or restarts, on the same port and with the same signing key) the application context. */
+    private void startContext(final String allowedDomains) throws Exception {
+        if (context != null) {
+            context.close();
+        }
         final List<String> properties = List.of(
                 "sql-mcp.transport=http",
                 "server.port=" + port,
@@ -102,7 +110,7 @@ class OAuthFlowIntegrationTest {
                 "sql-mcp.auth.google.enabled=true",
                 "sql-mcp.auth.google.client-id=google-client-id",
                 "sql-mcp.auth.google.client-secret=google-client-secret",
-                "sql-mcp.auth.google.allowed-domains=example.com",
+                "sql-mcp.auth.google.allowed-domains=" + allowedDomains,
                 "sql-mcp.auth.google.service-account-key=" + serviceAccountKey(),
                 "sql-mcp.auth.google.admin-email=admin@example.com",
                 "sql-mcp.auth.google.authorize-url=http://localhost:" + google.port() + "/google-auth",
@@ -502,6 +510,39 @@ class OAuthFlowIntegrationTest {
         final String code = approve(reachConsent(clientId));
 
         final HttpResponse<String> response = exchange(clientId, code, "short");
+
+        assertEquals(400, response.statusCode());
+        assertEquals("invalid_grant", MAPPER.readTree(response.body()).get("error").asText());
+    }
+
+    @Test
+    void whenRefreshing_givenHostedDomainDifferentFromEmailDomain_shouldCheckHostedDomain() throws Exception {
+        startContext("corp.example.org");
+        google.stubFor(post(urlPathEqualTo("/google-token")).willReturn(json(
+                "{\"id_token\":\"" + idToken("corp.example.org") + "\"}")));
+        final String clientId = register();
+        final String code = approve(reachConsent(clientId));
+        final JsonNode first = MAPPER.readTree(exchange(clientId, code, VERIFIER).body());
+
+        final HttpResponse<String> response = postForm("/oauth/token", Map.of(
+                "grant_type", "refresh_token",
+                "refresh_token", first.get("refresh_token").asText(),
+                "client_id", clientId));
+
+        assertEquals(200, response.statusCode(), response.body());
+    }
+
+    @Test
+    void whenRefreshing_givenHostedDomainNoLongerAllowed_shouldReturnInvalidGrant() throws Exception {
+        final String clientId = register();
+        final String code = approve(reachConsent(clientId));
+        final JsonNode first = MAPPER.readTree(exchange(clientId, code, VERIFIER).body());
+        startContext("other.com");
+
+        final HttpResponse<String> response = postForm("/oauth/token", Map.of(
+                "grant_type", "refresh_token",
+                "refresh_token", first.get("refresh_token").asText(),
+                "client_id", clientId));
 
         assertEquals(400, response.statusCode());
         assertEquals("invalid_grant", MAPPER.readTree(response.body()).get("error").asText());

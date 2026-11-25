@@ -53,7 +53,7 @@ public class McpServerConfig {
     private static final String SERVER_NAME = "sql-mcp-server";
     private static final String SERVER_VERSION = "1.1.0";
     private static final String MCP_ENDPOINT = "/mcp";
-    private static final String CALLER_CONTEXT_KEY = "caller";
+    static final String CALLER_CONTEXT_KEY = "caller";
 
     /**
      * Creates the ObjectMapper for JSON serialization.
@@ -218,7 +218,7 @@ public class McpServerConfig {
                 .build();
     }
 
-    private static McpStatelessServerFeatures.SyncToolSpecification toStateless(
+    static McpStatelessServerFeatures.SyncToolSpecification toStateless(
             final McpServerFeatures.SyncToolSpecification spec,
             final ConnectionAccess connectionAccess,
             final ObjectMapper objectMapper) {

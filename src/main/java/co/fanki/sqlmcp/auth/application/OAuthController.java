@@ -1,6 +1,7 @@
 package co.fanki.sqlmcp.auth.application;
 
 import co.fanki.sqlmcp.auth.domain.AuthorizationCode;
+import co.fanki.sqlmcp.auth.domain.GoogleIdentity;
 import co.fanki.sqlmcp.auth.domain.GoogleLogin;
 import co.fanki.sqlmcp.auth.domain.GoogleLoginEnabled;
 import co.fanki.sqlmcp.auth.domain.GoogleLoginException;
@@ -174,15 +175,16 @@ public class OAuthController {
         if (error != null || code == null) {
             return page(HttpStatus.FORBIDDEN, "Login failed", "The login with Google was not completed.");
         }
-        final String email;
+        final GoogleIdentity identity;
         try {
-            email = googleLogin.loginWithCode(code);
+            identity = googleLogin.loginWithCode(code);
         } catch (GoogleLoginException e) {
             LOG.warn("Google login rejected: {}", e.getMessage());
             return page(HttpStatus.FORBIDDEN, "Login failed", "This Google account is not allowed to use this server.");
         }
-        final String signedState = tokens.issueLoginState(loginState.withEmail(email));
-        return consentPage(client, loginState.redirectUri(), email, signedState);
+        final String signedState = tokens.issueLoginState(
+                loginState.withIdentity(identity.email(), identity.hostedDomain()));
+        return consentPage(client, loginState.redirectUri(), identity.email(), signedState);
     }
 
     /**
@@ -209,7 +211,7 @@ public class OAuthController {
             return redirect(state.redirectUri(), error("access_denied", state.clientState()));
         }
         final String code = tokens.issueAuthorizationCode(AuthorizationCode.of(
-                state.email(), state.clientId(), state.redirectUri(), state.codeChallenge()));
+                state.email(), state.hostedDomain(), state.clientId(), state.redirectUri(), state.codeChallenge()));
         final Map<String, String> params = new LinkedHashMap<>();
         params.put("code", code);
         if (state.clientState() != null) {
@@ -222,7 +224,7 @@ public class OAuthController {
      * The token endpoint: exchanges an authorization code or a refresh token for new tokens.
      *
      * @param form the form fields of the request; a refresh grant must send the {@code client_id} the token was
-     *     issued to, and the email's domain must still be in {@code allowed-domains}
+     *     issued to, and the hosted domain verified at login must still be in {@code allowed-domains}
      * @return the tokens, or a 400 JSON error ({@code invalid_request}, {@code invalid_grant},
      *     {@code unsupported_grant_type})
      */
@@ -259,7 +261,7 @@ public class OAuthController {
                 || !redeemed.matchesVerifier(verifier)) {
             return error(HttpStatus.BAD_REQUEST, "invalid_grant");
         }
-        return tokenResponse(tokens.issueTokens(redeemed.email(), redeemed.clientId()));
+        return tokenResponse(tokens.issueTokens(redeemed.email(), redeemed.hostedDomain(), redeemed.clientId()));
     }
 
     private ResponseEntity<Map<String, Object>> refresh(final Map<String, String> form) {
@@ -274,10 +276,10 @@ public class OAuthController {
         } catch (InvalidTokenException e) {
             return error(HttpStatus.BAD_REQUEST, "invalid_grant");
         }
-        if (!clientId.equals(grant.clientId()) || !googleLogin.allowsEmailDomain(grant.email())) {
+        if (!clientId.equals(grant.clientId()) || !googleLogin.allowsHostedDomain(grant.hostedDomain())) {
             return error(HttpStatus.BAD_REQUEST, "invalid_grant");
         }
-        return tokenResponse(tokens.issueTokens(grant.email(), grant.clientId()));
+        return tokenResponse(tokens.issueTokens(grant.email(), grant.hostedDomain(), grant.clientId()));
     }
 
     private static ResponseEntity<Map<String, Object>> tokenResponse(final IssuedTokens issued) {

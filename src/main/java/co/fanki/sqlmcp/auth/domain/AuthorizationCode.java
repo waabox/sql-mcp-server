@@ -19,16 +19,19 @@ public final class AuthorizationCode {
     private static final Pattern PKCE_VALUE = Pattern.compile("[A-Za-z0-9\\-._~]{43,128}");
 
     private final String email;
+    private final String hostedDomain;
     private final String clientId;
     private final String redirectUri;
     private final String codeChallenge;
 
     private AuthorizationCode(
             final String email,
+            final String hostedDomain,
             final String clientId,
             final String redirectUri,
             final String codeChallenge) {
         this.email = email;
+        this.hostedDomain = hostedDomain;
         this.clientId = clientId;
         this.redirectUri = redirectUri;
         this.codeChallenge = codeChallenge;
@@ -38,6 +41,7 @@ public final class AuthorizationCode {
      * Creates an authorization code payload.
      *
      * @param email the authenticated user's email
+     * @param hostedDomain the Google hosted domain verified at login
      * @param clientId the client the code was issued to
      * @param redirectUri the redirect URI of the request
      * @param codeChallenge the PKCE S256 challenge
@@ -46,14 +50,16 @@ public final class AuthorizationCode {
      */
     public static AuthorizationCode of(
             final String email,
+            final String hostedDomain,
             final String clientId,
             final String redirectUri,
             final String codeChallenge) {
         Objects.requireNonNull(email, "email must not be null");
+        Objects.requireNonNull(hostedDomain, "hostedDomain must not be null");
         Objects.requireNonNull(clientId, "clientId must not be null");
         Objects.requireNonNull(redirectUri, "redirectUri must not be null");
         Objects.requireNonNull(codeChallenge, "codeChallenge must not be null");
-        return new AuthorizationCode(email, clientId, redirectUri, codeChallenge);
+        return new AuthorizationCode(email, hostedDomain, clientId, redirectUri, codeChallenge);
     }
 
     /**
@@ -75,6 +81,15 @@ public final class AuthorizationCode {
      */
     public String email() {
         return email;
+    }
+
+    /**
+     * Returns the Google hosted domain verified at login.
+     *
+     * @return the hosted domain
+     */
+    public String hostedDomain() {
+        return hostedDomain;
     }
 
     /**

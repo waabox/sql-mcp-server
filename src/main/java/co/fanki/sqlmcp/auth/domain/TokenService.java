@@ -107,6 +107,7 @@ public class TokenService implements AccessTokenVerifier {
         }
         if (state.email() != null) {
             claims.claim("email", state.email());
+            claims.claim("hd", state.hostedDomain());
         }
         return encrypt(claims);
     }
@@ -124,7 +125,7 @@ public class TokenService implements AccessTokenVerifier {
                 string(claims, "cid"), string(claims, "redirect"), optional(claims, "cstate"),
                 string(claims, "challenge"));
         final String email = optional(claims, "email");
-        return email != null ? state.withEmail(email) : state;
+        return email != null ? state.withIdentity(email, string(claims, "hd")) : state;
     }
 
     /**
@@ -138,6 +139,7 @@ public class TokenService implements AccessTokenVerifier {
     public String issueAuthorizationCode(final AuthorizationCode code) {
         final JWTClaimsSet.Builder claims = base(CODE, CODE_TTL);
         claims.claim("email", code.email());
+        claims.claim("hd", code.hostedDomain());
         claims.claim("cid", code.clientId());
         claims.claim("redirect", code.redirectUri());
         claims.claim("challenge", code.codeChallenge());
@@ -157,7 +159,7 @@ public class TokenService implements AccessTokenVerifier {
     public AuthorizationCode redeemAuthorizationCode(final String code) {
         final JWTClaimsSet claims = decrypt(code, CODE, true);
         return AuthorizationCode.of(
-                string(claims, "email"), string(claims, "cid"), string(claims, "redirect"),
+                string(claims, "email"), string(claims, "hd"), string(claims, "cid"), string(claims, "redirect"),
                 string(claims, "challenge"));
     }
 
@@ -167,16 +169,18 @@ public class TokenService implements AccessTokenVerifier {
      * <p>Business rule: the lifetimes come from {@code access-token-ttl} and {@code refresh-token-ttl}.
      *
      * @param email the user's email
+     * @param hostedDomain the Google hosted domain verified at login, re-checked on refresh
      * @param clientId the client the tokens are issued to
      * @return the tokens
      */
-    public IssuedTokens issueTokens(final String email, final String clientId) {
+    public IssuedTokens issueTokens(final String email, final String hostedDomain, final String clientId) {
         final JWTClaimsSet.Builder access = base(ACCESS, accessTtl);
         access.audience(issuer);
         access.claim("email", email);
         access.claim("cid", clientId);
         final JWTClaimsSet.Builder refresh = base(REFRESH, refreshTtl);
         refresh.claim("email", email);
+        refresh.claim("hd", hostedDomain);
         refresh.claim("cid", clientId);
         return IssuedTokens.of(encrypt(access), encrypt(refresh), accessTtl.toSeconds());
     }
@@ -200,7 +204,7 @@ public class TokenService implements AccessTokenVerifier {
      */
     public RefreshGrant readRefreshToken(final String token) {
         final JWTClaimsSet claims = decrypt(token, REFRESH, true);
-        return RefreshGrant.of(string(claims, "email"), string(claims, "cid"));
+        return RefreshGrant.of(string(claims, "email"), string(claims, "hd"), string(claims, "cid"));
     }
 
     private JWTClaimsSet.Builder base(final String type, final Duration ttl) {

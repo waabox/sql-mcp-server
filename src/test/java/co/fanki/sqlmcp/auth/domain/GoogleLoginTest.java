@@ -42,8 +42,11 @@ class GoogleLoginTest {
     }
 
     @Test
-    void whenValidatingIdToken_givenValidClaims_shouldReturnEmail() {
-        assertEquals("ana@example.com", login(List.of("example.com")).validateIdToken(validClaims()));
+    void whenValidatingIdToken_givenValidClaims_shouldReturnEmailAndHostedDomain() {
+        final GoogleIdentity identity = login(List.of("example.com")).validateIdToken(validClaims());
+
+        assertEquals("ana@example.com", identity.email());
+        assertEquals("example.com", identity.hostedDomain());
     }
 
     @Test
@@ -100,14 +103,14 @@ class GoogleLoginTest {
     }
 
     @Test
-    void whenCheckingEmailDomain_givenAllowedAndRemovedDomains_shouldAcceptOnlyAllowed() {
+    void whenCheckingHostedDomain_givenAllowedAndRemovedDomains_shouldAcceptOnlyAllowed() {
         final GoogleLogin login = login(List.of("Example.com"));
 
-        assertTrue(login.allowsEmailDomain("ana@example.com"));
-        assertTrue(login.allowsEmailDomain("ANA@EXAMPLE.COM"));
-        assertFalse(login.allowsEmailDomain("ana@other.com"));
-        assertFalse(login.allowsEmailDomain("ana"));
-        assertFalse(login(List.of()).allowsEmailDomain("ana@example.com"));
+        assertTrue(login.allowsHostedDomain("example.com"));
+        assertTrue(login.allowsHostedDomain("EXAMPLE.COM"));
+        assertFalse(login.allowsHostedDomain("other.com"));
+        assertFalse(login.allowsHostedDomain(null));
+        assertFalse(login(List.of()).allowsHostedDomain("example.com"));
     }
 
 }

@@ -8,10 +8,12 @@ package co.fanki.sqlmcp.auth.domain;
 public final class RefreshGrant {
 
     private final String email;
+    private final String hostedDomain;
     private final String clientId;
 
-    private RefreshGrant(final String email, final String clientId) {
+    private RefreshGrant(final String email, final String hostedDomain, final String clientId) {
         this.email = email;
+        this.hostedDomain = hostedDomain;
         this.clientId = clientId;
     }
 
@@ -19,11 +21,12 @@ public final class RefreshGrant {
      * Creates the grant.
      *
      * @param email the user's email
+     * @param hostedDomain the Google hosted domain verified at login
      * @param clientId the client the token was issued to
      * @return the grant
      */
-    public static RefreshGrant of(final String email, final String clientId) {
-        return new RefreshGrant(email, clientId);
+    public static RefreshGrant of(final String email, final String hostedDomain, final String clientId) {
+        return new RefreshGrant(email, hostedDomain, clientId);
     }
 
     /**
@@ -33,6 +36,15 @@ public final class RefreshGrant {
      */
     public String email() {
         return email;
+    }
+
+    /**
+     * Returns the Google hosted domain verified at login.
+     *
+     * @return the hosted domain
+     */
+    public String hostedDomain() {
+        return hostedDomain;
     }
 
     /**

@@ -17,18 +17,21 @@ public final class LoginState {
     private final String clientState;
     private final String codeChallenge;
     private final String email;
+    private final String hostedDomain;
 
     private LoginState(
             final String clientId,
             final String redirectUri,
             final String clientState,
             final String codeChallenge,
-            final String email) {
+            final String email,
+            final String hostedDomain) {
         this.clientId = clientId;
         this.redirectUri = redirectUri;
         this.clientState = clientState;
         this.codeChallenge = codeChallenge;
         this.email = email;
+        this.hostedDomain = hostedDomain;
     }
 
     /**
@@ -49,19 +52,21 @@ public final class LoginState {
         Objects.requireNonNull(clientId, "clientId must not be null");
         Objects.requireNonNull(redirectUri, "redirectUri must not be null");
         Objects.requireNonNull(codeChallenge, "codeChallenge must not be null");
-        return new LoginState(clientId, redirectUri, clientState, codeChallenge, null);
+        return new LoginState(clientId, redirectUri, clientState, codeChallenge, null, null);
     }
 
     /**
-     * Returns a copy of this state with the verified email of the user.
+     * Returns a copy of this state with the verified identity of the user.
      *
      * @param verifiedEmail the email Google authenticated
+     * @param verifiedHostedDomain the hosted domain Google reported
      * @return the new state
-     * @throws NullPointerException if the email is null
+     * @throws NullPointerException if an argument is null
      */
-    public LoginState withEmail(final String verifiedEmail) {
+    public LoginState withIdentity(final String verifiedEmail, final String verifiedHostedDomain) {
         Objects.requireNonNull(verifiedEmail, "verifiedEmail must not be null");
-        return new LoginState(clientId, redirectUri, clientState, codeChallenge, verifiedEmail);
+        Objects.requireNonNull(verifiedHostedDomain, "verifiedHostedDomain must not be null");
+        return new LoginState(clientId, redirectUri, clientState, codeChallenge, verifiedEmail, verifiedHostedDomain);
     }
 
     /**
@@ -107,6 +112,15 @@ public final class LoginState {
      */
     public String email() {
         return email;
+    }
+
+    /**
+     * Returns the verified hosted domain.
+     *
+     * @return the hosted domain, or null before the Google login completed
+     */
+    public String hostedDomain() {
+        return hostedDomain;
     }
 
 }

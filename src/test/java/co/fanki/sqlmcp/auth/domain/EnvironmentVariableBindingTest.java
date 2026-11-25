@@ -21,7 +21,8 @@ class EnvironmentVariableBindingTest {
 
     private static Binder binderFor(final Map<String, Object> variables) {
         final StandardEnvironment environment = new StandardEnvironment();
-        environment.getPropertySources().addFirst(new SystemEnvironmentPropertySource("test-systemEnvironment", variables));
+        environment.getPropertySources().addFirst(
+                new SystemEnvironmentPropertySource("test-systemEnvironment", variables));
         ConfigurationPropertySources.attach(environment);
         return Binder.get(environment);
     }

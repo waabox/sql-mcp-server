@@ -417,8 +417,8 @@ accounts are not supported, even on a company address.
    (`GOOGLE_ADMIN_EMAIL`). It needs to be allowed to read users and groups.
 
 Groups are read from the Admin SDK Directory API, which works on every
-Workspace edition. Nested groups are expanded up to 10 levels. A suspended or
-deleted user has no groups and so no access.
+Workspace edition. Nested groups are expanded up to 10 levels. A suspended,
+archived or deleted user has no groups and so no access.
 
 ### 3. Configure the server
 
@@ -490,6 +490,10 @@ Tokens are encrypted with `signing-key` and nothing is stored, so:
   cached for `groups-cache-ttl` (default 5 minutes). Removing someone from a
   group, or suspending them, takes effect within that time. If Google cannot be
   reached and there is no cached value, the request is denied.
+- The Google hosted domain verified at login is stored in the refresh token and
+  checked against `allowed-domains` on every refresh. Removing a domain from
+  `allowed-domains` ends the sessions of its users within the access token
+  lifetime, because their refresh fails and they must log in again (and fail).
 - Individual tokens cannot be revoked. A stolen refresh token works until it
   expires or the person loses access in Google. To log everyone out, rotate
   `signing-key`. Old refresh tokens are not invalidated when a new one is
@@ -687,14 +691,15 @@ runs without authentication.
 
 ### Security checklist
 
-- [ ] `SQL_MCP_AUTH_TOKEN` is set (long random value, stored in a secret manager), or Google login is enabled with a strong `SQL_MCP_SIGNING_KEY`
+- [ ] `SQL_MCP_AUTH_TOKEN` is set (long random value, stored in a secret manager), or Google login is enabled
+  with a strong `SQL_MCP_SIGNING_KEY`
 - [ ] TLS is terminated in front of the server
 - [ ] Each connection uses a dedicated read-only database role, ideally on a replica
 - [ ] Sensitive tables are in the deny list (the query results are sent to the LLM)
 - [ ] `/app/logs` is persisted or shipped, and audit logs are reviewed
 - [ ] Proxy timeouts are longer than `SQL_MCP_QUERY_MAX_TIMEOUT_MS`
 
-### Upgrading to 1.1.0
+### Upgrading to 1.2.0
 
 - Tool calls over HTTP now go through one access check for every kind of caller.
   A call that names an unknown or blank connection is answered with
@@ -703,6 +708,8 @@ runs without authentication.
   used to answer `{"connection":...,"success":false,"message":...}`). This
   uniform answer is what keeps forbidden connections indistinguishable from
   missing ones. Clients that parse the old shapes must be updated.
+
+### Upgrading to 1.1.0
 
 - The default transport is now `http`. Server deployments no longer need
   `SQL_MCP_TRANSPORT=http`. Local setups where Claude Code starts the jar must

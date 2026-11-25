@@ -170,6 +170,16 @@ class HttpAuthenticationFilterIntegrationTest {
     }
 
     @Test
+    void whenCallingUnknownOAuthPath_givenSharedTokenConfiguredAndNoToken_shouldAnswer401NotNotFound()
+            throws Exception {
+        start("sql-mcp.http.auth-token=secret-token");
+
+        for (final String path : List.of("/oauth/unknown", "/.well-known/unknown", "/oauth/token/extra")) {
+            assertEquals(401, postToPath(path).statusCode(), path);
+        }
+    }
+
+    @Test
     void whenStarting_givenGoogleEnabledWithRelaxedBooleanValue_shouldExposeOAuthEndpoints() throws Exception {
         final int issuerPort = freePort();
         final String issuer = "http://localhost:" + issuerPort;

@@ -70,23 +70,16 @@ public class GoogleLogin {
     }
 
     /**
-     * Tells whether the domain of an email is in {@code allowed-domains}.
+     * Tells whether a Google hosted domain is in {@code allowed-domains}.
      *
-     * <p>Business rule: used to re-check a returning user (refresh grant); the comparison is case-insensitive and an
-     * empty {@code allowed-domains} allows nobody.
+     * <p>Business rule: used to re-check a returning user (refresh grant) against the hosted domain verified at
+     * login; the comparison is case-insensitive and an empty {@code allowed-domains} allows nobody.
      *
-     * @param email the email
-     * @return true when the domain of the email is allowed
+     * @param hostedDomain the hosted domain
+     * @return true when the hosted domain is allowed
      */
-    public boolean allowsEmailDomain(final String email) {
-        if (email == null) {
-            return false;
-        }
-        final int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        return allowedDomains.contains(email.substring(at + 1).strip().toLowerCase(Locale.ROOT));
+    public boolean allowsHostedDomain(final String hostedDomain) {
+        return hostedDomain != null && allowedDomains.contains(hostedDomain.strip().toLowerCase(Locale.ROOT));
     }
 
     /**
@@ -123,10 +116,10 @@ public class GoogleLogin {
      * Exchanges the authorization code from Google and validates the identity it carries.
      *
      * @param code the authorization code received from Google
-     * @return the verified, lower-cased email
+     * @return the verified identity
      * @throws GoogleLoginException if Google cannot be reached, answers an error or the identity is not acceptable
      */
-    public String loginWithCode(final String code) {
+    public GoogleIdentity loginWithCode(final String code) {
         final String form = "grant_type=authorization_code"
                 + "&code=" + encode(code)
                 + "&client_id=" + encode(clientId)
@@ -160,10 +153,10 @@ public class GoogleLogin {
      * Validates the claims of a Google ID token.
      *
      * @param claims the ID token claims
-     * @return the verified, lower-cased email
+     * @return the verified identity (lower-cased email and hosted domain)
      * @throws GoogleLoginException if any rule in the class description is violated
      */
-    public String validateIdToken(final Map<String, Object> claims) {
+    public GoogleIdentity validateIdToken(final Map<String, Object> claims) {
         if (!ISSUERS.contains(String.valueOf(claims.get("iss")))) {
             throw new GoogleLoginException("Unexpected ID token issuer");
         }
@@ -180,11 +173,10 @@ public class GoogleLogin {
         if (!(claims.get("email") instanceof String email) || email.isBlank()) {
             throw new GoogleLoginException("ID token has no email");
         }
-        if (!(claims.get("hd") instanceof String hostedDomain)
-                || !allowedDomains.contains(hostedDomain.strip().toLowerCase(Locale.ROOT))) {
+        if (!(claims.get("hd") instanceof String hostedDomain) || !allowsHostedDomain(hostedDomain)) {
             throw new GoogleLoginException("Account does not belong to an allowed domain");
         }
-        return email.strip().toLowerCase(Locale.ROOT);
+        return GoogleIdentity.of(email.strip().toLowerCase(Locale.ROOT), hostedDomain.strip().toLowerCase(Locale.ROOT));
     }
 
     private boolean audienceMatches(final Object audience) {
