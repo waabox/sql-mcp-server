@@ -23,7 +23,7 @@
         <mcp-sdk.version>0.12.1</mcp-sdk.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <redshift-jdbc.version>2.1.0.33</redshift-jdbc.version>
-        <testcontainers.version>1.20.4</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <dependencyManagement>
