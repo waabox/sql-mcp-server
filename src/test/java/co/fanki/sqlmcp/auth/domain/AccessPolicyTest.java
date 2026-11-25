@@ -43,7 +43,8 @@ class AccessPolicyTest {
                 AccessPolicy.Entry.ofGroup("data@example.com", List.of("analytics")),
                 AccessPolicy.Entry.ofGroup("sre@example.com", List.of("billing")));
 
-        final Set<String> result = policy.connectionsFor("ana@example.com", Set.of("data@example.com", "sre@example.com"), ALL);
+        final Set<String> result = policy.connectionsFor(
+                "ana@example.com", Set.of("data@example.com", "sre@example.com"), ALL);
 
         assertEquals(Set.of("analytics", "billing"), result);
     }

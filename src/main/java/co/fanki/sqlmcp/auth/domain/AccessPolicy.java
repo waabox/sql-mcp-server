@@ -44,7 +44,7 @@ public class AccessPolicy implements InitializingBean {
     }
 
     /**
-     * Sets the group to connections mapping; called by Spring when binding {@code sql-mcp.access}.
+     * Sets the group and user to connections mapping; called by Spring when binding {@code sql-mcp.access}.
      *
      * @param access the entries; null is treated as empty
      */
@@ -72,7 +72,7 @@ public class AccessPolicy implements InitializingBean {
     }
 
     /**
-     * Checks that every connection named in the mapping exists.
+     * Checks that every entry is well formed and every connection named in the mapping exists.
      *
      * @throws IllegalStateException naming the first unknown connection, an entry with both or neither of group and
      *     users, or an invalid user email
@@ -125,7 +125,7 @@ public class AccessPolicy implements InitializingBean {
     }
 
     /**
-     * Returns the connections a member of the given groups may use.
+     * Returns the connections the user may use, as a listed user or as a member of the given groups.
      *
      * @param email the email of the user
      * @param groups the groups of the user
@@ -155,7 +155,7 @@ public class AccessPolicy implements InitializingBean {
         return allowed;
     }
 
-    /** One mapping from a group to connections; used for configuration binding. */
+    /** One mapping from a group, or a list of users, to connections; used for configuration binding. */
     public static class Entry {
 
         private String group;

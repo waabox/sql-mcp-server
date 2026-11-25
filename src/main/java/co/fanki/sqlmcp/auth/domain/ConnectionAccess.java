@@ -34,7 +34,7 @@ public class ConnectionAccess {
      * Creates the component.
      *
      * @param profileRepository the connection profiles
-     * @param accessPolicy the group to connections mapping
+     * @param accessPolicy the group and user to connections mapping
      * @param groupResolver resolves the groups of a Google user
      */
     public ConnectionAccess(

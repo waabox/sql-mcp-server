@@ -499,11 +499,14 @@ client registers itself and sends you through the same login.
 
 Tokens are encrypted with `signing-key` and nothing is stored, so:
 
-- Without groups, the server cannot see that a Google account was suspended or
-  removed: it only knows the list. Removing the person from `users` (and
-  redeploying) is the offboarding step. A suspended account cannot log in to
-  Google again, so a shorter `refresh-token-ttl` bounds how long an existing
-  session can keep working.
+- With `users`, the server cannot see that a Google account was suspended or
+  removed: it only knows the list, and the list is checked on every request.
+  Removing the person from `users` (and redeploying) is the offboarding step.
+  A refresh does not contact Google, and the refresh token is sliding, so
+  `refresh-token-ttl` only ends sessions that stop refreshing: it does not bound
+  the session of an account that keeps refreshing, even if Google suspended it.
+  A `users` entry is not affected by a Google suspension, even when groups are
+  also mapped.
 - Group membership (when you map groups) is **not** in the token. It is read on every request and
   cached for `groups-cache-ttl` (default 5 minutes). Removing someone from a
   group, or suspending them, takes effect within that time. If Google cannot be
@@ -512,8 +515,9 @@ Tokens are encrypted with `signing-key` and nothing is stored, so:
   checked against `allowed-domains` on every refresh. Removing a domain from
   `allowed-domains` ends the sessions of its users within the access token
   lifetime, because their refresh fails and they must log in again (and fail).
-- Individual tokens cannot be revoked. A stolen refresh token works until it
-  expires or the person loses access in Google. To log everyone out, rotate
+- Individual tokens cannot be revoked. A stolen refresh token keeps working while it is
+  refreshed before it expires, until the person is removed from `users` or
+  loses their group membership, or their domain leaves `allowed-domains`. To log everyone out, rotate
   `signing-key`. Old refresh tokens are not invalidated when a new one is
   issued, so refresh token reuse is not detected.
 - Authorization codes are not strictly single use. Their short lifetime and
