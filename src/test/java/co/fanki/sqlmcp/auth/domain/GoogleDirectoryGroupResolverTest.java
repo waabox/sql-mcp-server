@@ -1,10 +1,15 @@
 package co.fanki.sqlmcp.auth.domain;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.security.KeyPairGenerator;
 import java.time.Clock;
@@ -113,6 +118,36 @@ class GoogleDirectoryGroupResolverTest {
         stubGroups("ana@example.com", "{\"groups\":[{\"email\":\"data@example.com\"}]}");
 
         assertTrue(resolver(Duration.ofMinutes(5)).groupsOf("ana@example.com").isEmpty());
+    }
+
+    @Test
+    void whenResolvingGroups_givenArchivedUser_shouldReturnEmpty() throws Exception {
+        google.stubFor(get(urlPathEqualTo(USERS)).willReturn(json("{\"archived\":true}")));
+        stubGroups("ana@example.com", "{\"groups\":[{\"email\":\"data@example.com\"}]}");
+
+        assertTrue(resolver(Duration.ofMinutes(5)).groupsOf("ana@example.com").isEmpty());
+    }
+
+    @Test
+    void whenResolvingGroups_givenNestingDeeperThanTheLimit_shouldTruncateAndLogWarning() throws Exception {
+        stubGroups("ana@example.com", "{\"groups\":[{\"email\":\"g1@example.com\"}]}");
+        for (int i = 1; i <= 12; i++) {
+            stubGroups("g" + i + "@example.com", "{\"groups\":[{\"email\":\"g" + (i + 1) + "@example.com\"}]}");
+        }
+        final Logger logger = (Logger) LoggerFactory.getLogger(GoogleDirectoryGroupResolver.class);
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        final Set<String> groups;
+        try {
+            groups = resolver(Duration.ofMinutes(5)).groupsOf("ana@example.com");
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertEquals(10, groups.size());
+        assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.WARN
+                && event.getFormattedMessage().contains("depth")), appender.list.toString());
     }
 
     @Test

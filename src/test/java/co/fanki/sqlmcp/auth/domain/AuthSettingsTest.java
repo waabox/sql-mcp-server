@@ -58,4 +58,45 @@ class AuthSettingsTest {
         assertTrue(error.getMessage().contains("sql-mcp.auth.signing-key"), error.getMessage());
     }
 
+    private static void assertIssuerRejected(final String issuer) {
+        final AuthSettings settings = complete();
+        settings.setIssuer(issuer);
+
+        final IllegalStateException error = assertThrows(IllegalStateException.class, settings::validate);
+
+        assertTrue(error.getMessage().contains("sql-mcp.auth.issuer"), issuer + ": " + error.getMessage());
+    }
+
+    @Test
+    void whenStarting_givenIssuerThatIsNotAnAbsoluteUrl_shouldFailNamingTheKey() {
+        assertIssuerRejected("sql-mcp.example.com");
+        assertIssuerRejected("/relative");
+        assertIssuerRejected("ftp://sql-mcp.example.com");
+        assertIssuerRejected("https://");
+    }
+
+    @Test
+    void whenStarting_givenIssuerWithPathQueryOrFragment_shouldFailNamingTheKey() {
+        assertIssuerRejected("https://sql-mcp.example.com/sqlmcp");
+        assertIssuerRejected("https://sql-mcp.example.com?x=1");
+        assertIssuerRejected("https://sql-mcp.example.com/#frag");
+        assertIssuerRejected("https://user@sql-mcp.example.com");
+    }
+
+    @Test
+    void whenStarting_givenPlainHttpIssuerOutsideLoopback_shouldFailNamingTheKey() {
+        assertIssuerRejected("http://sql-mcp.example.com");
+    }
+
+    @Test
+    void whenStarting_givenHttpsOrLoopbackIssuer_shouldPass() {
+        for (final String issuer : List.of("https://sql-mcp.example.com", "https://sql-mcp.example.com/",
+                "https://sql-mcp.example.com:8443", "http://localhost:8080", "http://127.0.0.1:8080")) {
+            final AuthSettings settings = complete();
+            settings.setIssuer(issuer);
+
+            assertDoesNotThrow(settings::validate, issuer);
+        }
+    }
+
 }

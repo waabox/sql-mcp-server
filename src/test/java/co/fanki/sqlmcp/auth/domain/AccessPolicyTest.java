@@ -77,4 +77,15 @@ class AccessPolicyTest {
         assertTrue(error.getMessage().contains("analitics"));
     }
 
+    @Test
+    void whenValidating_givenEntryWithBlankOrMissingGroup_shouldFail() {
+        for (final String group : new String[] {null, "", "  "}) {
+            final AccessPolicy policy = policy(AccessPolicy.Entry.of(group, List.of("analytics")));
+
+            final IllegalStateException error = assertThrows(IllegalStateException.class, policy::validate);
+
+            assertTrue(error.getMessage().contains("group"), error.getMessage());
+        }
+    }
+
 }

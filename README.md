@@ -450,8 +450,10 @@ sql-mcp:
 A person gets the union of the connections of every group they belong to, and
 none when no group matches. `"*"` means every configured connection. The server
 refuses to start when Google login is enabled and a required value is missing
-(or `signing-key` is shorter than 32 bytes), or when `access` names a
-connection that does not exist. An empty `allowed-domains` rejects every login.
+(or `signing-key` is shorter than 32 bytes), when `issuer` is not an absolute
+URL without path, query or fragment (`https`, or `http` only for localhost), when
+`access` names a connection that does not exist, or when an `access` entry has no
+group. An empty `allowed-domains` rejects every login.
 Everything works with several replicas as long as they share `signing-key`:
 there is no database and nothing else to run.
 
@@ -693,6 +695,14 @@ runs without authentication.
 - [ ] Proxy timeouts are longer than `SQL_MCP_QUERY_MAX_TIMEOUT_MS`
 
 ### Upgrading to 1.1.0
+
+- Tool calls over HTTP now go through one access check for every kind of caller.
+  A call that names an unknown or blank connection is answered with
+  `{"success":false,"error":"Connection profile not found: <name>"}` instead of
+  the tool-specific message it returned before (for example `test_connection`
+  used to answer `{"connection":...,"success":false,"message":...}`). This
+  uniform answer is what keeps forbidden connections indistinguishable from
+  missing ones. Clients that parse the old shapes must be updated.
 
 - The default transport is now `http`. Server deployments no longer need
   `SQL_MCP_TRANSPORT=http`. Local setups where Claude Code starts the jar must

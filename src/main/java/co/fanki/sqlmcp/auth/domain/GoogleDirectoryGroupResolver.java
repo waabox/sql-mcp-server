@@ -32,10 +32,11 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Resolves a user's groups from the Google Workspace Admin SDK Directory API.
  *
- * <p>Business rules: a user that does not exist or is suspended has no groups; nested groups are expanded
+ * <p>Business rules: a user that does not exist, is suspended or is archived has no groups; nested groups are expanded
  * breadth-first with a visited set (so cycles end) up to a depth of 10; the result, including "no groups", is cached
  * per lower-cased email for {@code groups-cache-ttl}; when Google fails and there is no valid cached value the
- * resolution fails with {@link GroupResolutionException} (fail closed). The credentials are built on first use, so a bad key denies instead of preventing startup.
+ * resolution fails with {@link GroupResolutionException} (fail closed). The credentials are built on first use,
+ * so a bad key denies instead of preventing startup.
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
@@ -80,7 +81,7 @@ public class GoogleDirectoryGroupResolver implements GroupResolver {
      * Returns the groups of a user, directly or through nested groups.
      *
      * @param email the user's email
-     * @return the group emails (lower-cased), empty for an unknown or suspended user
+     * @return the group emails (lower-cased), empty for an unknown, suspended or archived user
      * @throws GroupResolutionException if Google cannot be queried and there is no valid cached value
      */
     @Override
@@ -114,6 +115,10 @@ public class GoogleDirectoryGroupResolver implements GroupResolver {
                 }
                 frontier = next;
             }
+            if (!frontier.isEmpty()) {
+                LOG.warn("Group nesting for a user is deeper than {}; the groups beyond that depth were ignored",
+                        MAX_DEPTH);
+            }
             return visited;
         } catch (final IOException e) {
             throw new GroupResolutionException("Could not read groups from Google", e);
@@ -129,7 +134,8 @@ public class GoogleDirectoryGroupResolver implements GroupResolver {
             return false;
         }
         requireOk(response);
-        return !mapper.readTree(response.body()).path("suspended").asBoolean(false);
+        final JsonNode user = mapper.readTree(response.body());
+        return !user.path("suspended").asBoolean(false) && !user.path("archived").asBoolean(false);
     }
 
     private List<String> groupsContaining(final String userKey) throws IOException, InterruptedException {

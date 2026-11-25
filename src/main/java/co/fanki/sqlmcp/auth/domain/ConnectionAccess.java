@@ -15,8 +15,8 @@ import java.util.stream.Collectors;
  * Decides which connection profiles a caller may use.
  *
  * <p>Business rules: local, anonymous and shared-token callers may use every connection; a Google user may use
- * the connections that the access policy grants to the user's groups, and none when there is no match or when the groups cannot be resolved
- * (fail closed).
+ * the connections that the access policy grants to the user's groups, and none when there is no match or when the
+ * groups cannot be resolved (fail closed).
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */

@@ -18,7 +18,7 @@ import java.util.TreeSet;
  *
  * <p>Business rules: the connections of a user are the union of the connections of every entry whose group the
  * user belongs to; a group is matched case-insensitively; {@code "*"} means every configured connection; an
- * entry that names a connection that does not exist makes the application fail at startup.
+ * entry that names a connection that does not exist, or that has no group, makes the application fail at startup.
  *
  * @author waabox(emiliano[at]fanki[dot]co)
  */
@@ -59,6 +59,11 @@ public class AccessPolicy implements InitializingBean {
         return access;
     }
 
+    /**
+     * Validates the mapping once Spring has bound it, so an invalid configuration prevents startup.
+     *
+     * @throws IllegalStateException if the mapping is invalid (see {@link #validate()})
+     */
     @Override
     public void afterPropertiesSet() {
         validate();
@@ -67,10 +72,15 @@ public class AccessPolicy implements InitializingBean {
     /**
      * Checks that every connection named in the mapping exists.
      *
-     * @throws IllegalStateException naming the first unknown connection
+     * @throws IllegalStateException naming the first unknown connection, or an entry with a blank group
      */
     public void validate() {
         for (final Entry entry : access) {
+            if (entry.getGroup() == null || entry.getGroup().isBlank()) {
+                throw new IllegalStateException(
+                        "sql-mcp.access has an entry with a missing or blank group (connections "
+                                + entry.getConnections() + ")");
+            }
             for (final String name : entry.getConnections()) {
                 if (!ALL_CONNECTIONS.equals(name) && !profileRepository.exists(name)) {
                     throw new IllegalStateException("sql-mcp.access names the connection '" + name
@@ -131,18 +141,38 @@ public class AccessPolicy implements InitializingBean {
             return entry;
         }
 
+        /**
+         * Returns the group.
+         *
+         * @return the group
+         */
         public String getGroup() {
             return group;
         }
 
+        /**
+         * Sets the group; called by Spring when binding the configuration.
+         *
+         * @param group the group
+         */
         public void setGroup(final String group) {
             this.group = group;
         }
 
+        /**
+         * Returns the connections.
+         *
+         * @return the connections
+         */
         public List<String> getConnections() {
             return connections;
         }
 
+        /**
+         * Sets the connections; called by Spring when binding the configuration.
+         *
+         * @param connections the connections
+         */
         public void setConnections(final List<String> connections) {
             this.connections = connections != null ? new ArrayList<>(connections) : new ArrayList<>();
         }
