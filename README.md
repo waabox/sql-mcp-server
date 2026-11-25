@@ -700,7 +700,7 @@ runs without authentication.
 - [ ] `/app/logs` is persisted or shipped, and audit logs are reviewed
 - [ ] Proxy timeouts are longer than `SQL_MCP_QUERY_MAX_TIMEOUT_MS`
 
-### Upgrading to 1.2.0
+### Upgrading to 1.3.0
 
 - Tool calls over HTTP now go through one access check for every kind of caller.
   A call that names an unknown or blank connection is answered with
