@@ -215,8 +215,8 @@ works in layers:
   logs a warning at startup. To identify each person and limit the connections
   they can use, enable [Google login](#google-login-and-group-access).
 
-- **Per-person access**: with Google login, Google Workspace groups decide which
-  connections each person may use. A connection the person may not use is
+- **Per-person access**: with Google login, an explicit list of user emails (or
+  Google Workspace groups) decides which connections each person may use. A connection the person may not use is
   reported exactly like one that does not exist.
 
 **Important:** These layers do not replace database permissions. Use a dedicated
@@ -377,8 +377,9 @@ default) the server behaves exactly as before.
 People log in with their Google Workspace account. The server follows the
 standard MCP authorization flow (OAuth 2.1 with dynamic client registration and
 PKCE), so any compliant client, such as Claude Code or ChatGPT, only needs the
-server URL. Google Workspace **groups** decide the connections each person may
-use, and the audit log records who ran each query.
+server URL. An explicit list of **users** (or, optionally, Google Workspace
+**groups**) decides the connections each person may use, and the audit log records who ran each query. The simplest setup is an
+explicit list of user emails in the configuration; Google groups are optional.
 
 ### Authentication modes
 
@@ -405,7 +406,11 @@ Only accounts of a Workspace domain in `allowed-domains` can log in: the
 server requires Google's hosted domain (`hd`) claim, so personal Google
 accounts are not supported, even on a company address.
 
-### 2. Create the service account that reads groups
+### 2. Create the service account that reads groups (only if you map Google groups)
+
+Skip this step when `access` only lists users: no service account, admin email
+or Directory API access is needed, and the server makes no Google directory
+calls.
 
 1. In the same project, enable the **Admin SDK API**.
 2. Create a service account and a JSON key. Its content is `GOOGLE_SA_KEY`.
@@ -438,23 +443,30 @@ sql-mcp:
       client-id: ${GOOGLE_CLIENT_ID}
       client-secret: ${GOOGLE_CLIENT_SECRET}
       allowed-domains: [example.com]
+      # Only when some access entry uses a group:
       service-account-key: ${GOOGLE_SA_KEY}
       admin-email: ${GOOGLE_ADMIN_EMAIL}
       groups-cache-ttl: 5m
   access:
-    - group: data@example.com
-      connections: [analytics, prod-replica]
-    - group: sre@example.com
+    - users: [ana@example.com, pedro@example.com]
+      connections: [analytics]
+    - group: sre@example.com                    # optional, needs step 2
       connections: ["*"]
 ```
 
-A person gets the union of the connections of every group they belong to, and
-none when no group matches. `"*"` means every configured connection. The server
+Each `access` entry has exactly one of `users` (a list of emails, compared
+case-insensitively) or `group`, plus `connections`. A person gets the union of
+the connections of every entry that lists their email and every entry whose
+group they belong to, and none otherwise. `"*"` means every configured
+connection. With the environment variable form, users are
+`SQL_MCP_ACCESS_<n>_USERS_<m>` (for example `SQL_MCP_ACCESS_0_USERS_0`). Groups
+are only read from Google when at least one entry uses `group`. The server
 refuses to start when Google login is enabled and a required value is missing
 (or `signing-key` is shorter than 32 bytes), when `issuer` is not an absolute
 URL without path, query or fragment (`https`, or `http` only for localhost), when
-`access` names a connection that does not exist, or when an `access` entry has no
-group. An empty `allowed-domains` rejects every login.
+`access` names a connection that does not exist, when an `access` entry has both
+or neither of `group` and `users` or a user that is not an email, or when an entry
+uses `group` and `service-account-key` or `admin-email` is missing. An empty `allowed-domains` rejects every login.
 Everything works with several replicas as long as they share `signing-key`:
 there is no database and nothing else to run.
 
@@ -487,7 +499,12 @@ client registers itself and sends you through the same login.
 
 Tokens are encrypted with `signing-key` and nothing is stored, so:
 
-- Group membership is **not** in the token. It is read on every request and
+- Without groups, the server cannot see that a Google account was suspended or
+  removed: it only knows the list. Removing the person from `users` (and
+  redeploying) is the offboarding step. A suspended account cannot log in to
+  Google again, so a shorter `refresh-token-ttl` bounds how long an existing
+  session can keep working.
+- Group membership (when you map groups) is **not** in the token. It is read on every request and
   cached for `groups-cache-ttl` (default 5 minutes). Removing someone from a
   group, or suspending them, takes effect within that time. If Google cannot be
   reached and there is no cached value, the request is denied.
@@ -699,6 +716,12 @@ runs without authentication.
 - [ ] Sensitive tables are in the deny list (the query results are sent to the LLM)
 - [ ] `/app/logs` is persisted or shipped, and audit logs are reviewed
 - [ ] Proxy timeouts are longer than `SQL_MCP_QUERY_MAX_TIMEOUT_MS`
+
+### Upgrading to 1.4.0
+
+- `sql-mcp.access` entries may now use `users` (a list of emails) instead of
+  `group`. Existing group entries keep working unchanged. The service account
+  key and admin email are now only required when some entry uses `group`.
 
 ### Upgrading to 1.3.0
 

@@ -75,7 +75,8 @@ sql-mcp:
       client-secret: ${GOOGLE_CLIENT_SECRET:}
       # Accepted Google Workspace domains (hosted domain claim). Empty rejects every login.
       allowed-domains: []
-      # Service account key (JSON content) with domain-wide delegation, used to read groups
+      # Service account key (JSON content) with domain-wide delegation, used to read groups.
+      # Only required when an access entry uses "group".
       service-account-key: ${GOOGLE_SA_KEY:}
       # Workspace admin the service account impersonates
       admin-email: ${GOOGLE_ADMIN_EMAIL:}
@@ -86,9 +87,13 @@ sql-mcp:
       token-url: https://oauth2.googleapis.com/token
       directory-url: https://admin.googleapis.com
 
-  # Which connections each Google group may use (Google login only). "*" means
-  # every connection. A person gets the union of the entries of all their groups.
+  # Which connections each person may use (Google login only). An entry has
+  # exactly one of "users" (explicit emails, no Google groups or service account
+  # needed) or "group" (Google group, needs service-account-key and admin-email).
+  # "*" means every connection. A person gets the union of all matching entries.
   # access:
+  #   - users: [ana@example.com, pedro@example.com]
+  #     connections: [analytics]
   #   - group: data@example.com
   #     connections: [analytics, prod-replica]
   #   - group: sre@example.com
