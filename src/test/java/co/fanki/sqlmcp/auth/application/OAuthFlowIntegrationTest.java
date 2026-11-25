@@ -305,6 +305,25 @@ class OAuthFlowIntegrationTest {
     }
 
     @Test
+    void whenQueryingForbiddenConnection_givenUserInDataGroup_shouldLogWarningWithCallerAndConnection()
+            throws Exception {
+        final String accessToken = login().get("access_token").asText();
+        final Logger config = (Logger) LoggerFactory.getLogger("co.fanki.sqlmcp.config.McpServerConfig");
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        config.addAppender(appender);
+        try {
+            callTool(accessToken, "execute_query", "{\"connection\":\"billing\",\"query\":\"SELECT 1\"}");
+        } finally {
+            config.detachAppender(appender);
+        }
+
+        assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.WARN
+                && event.getFormattedMessage().contains("ana@example.com")
+                && event.getFormattedMessage().contains("billing")), appender.list.toString());
+    }
+
+    @Test
     void whenExchangingCode_givenWrongCodeVerifier_shouldReturnInvalidGrant() throws Exception {
         final String clientId = register();
         final String code = approve(reachConsent(clientId));

@@ -153,7 +153,8 @@ public class McpServerConfig {
      * Creates the stateless Streamable HTTP transport for server deployment.
      *
      * <p>The caller identified by the authentication filter is passed to the tool handlers in the transport
-     * context; when absent the caller is anonymous.
+     * context; when absent (the request did not pass through the filter) there is no caller and every tool call is
+     * denied.
      *
      * @param objectMapper the ObjectMapper for JSON serialization
      * @return the configured Streamable HTTP transport
@@ -164,9 +165,10 @@ public class McpServerConfig {
         return WebMvcStatelessServerTransport.builder()
                 .objectMapper(objectMapper)
                 .messageEndpoint(MCP_ENDPOINT)
-                .contextExtractor(request -> McpTransportContext.create(Map.of(
-                        CALLER_CONTEXT_KEY,
-                        request.attribute(HttpAuthenticationFilter.CALLER_ATTRIBUTE).orElse(Caller.anonymous()))))
+                .contextExtractor(request -> McpTransportContext.create(request
+                        .attribute(HttpAuthenticationFilter.CALLER_ATTRIBUTE)
+                        .<Map<String, Object>>map(caller -> Map.of(CALLER_CONTEXT_KEY, caller))
+                        .orElse(Map.of())))
                 .build();
     }
 
@@ -224,10 +226,16 @@ public class McpServerConfig {
                 spec.tool(),
                 (context, request) -> {
                     final Caller caller = callerOf(context);
+                    if (caller == null) {
+                        LOG.warn("Rejected a tool call that reached the MCP endpoint without an identified caller");
+                        return errorResult("Unauthorized", objectMapper);
+                    }
                     final Map<String, Object> arguments = request.arguments();
                     if (arguments != null && arguments.get("connection") instanceof String name
                             && !connectionAccess.canUse(caller, name)) {
-                        return connectionNotFound(name, objectMapper);
+                        LOG.warn("Rejected call by '{}' to the forbidden or unknown connection '{}'",
+                                sanitize(caller.auditName()), sanitize(name));
+                        return errorResult("Connection profile not found: " + name, objectMapper);
                     }
                     return CurrentCaller.runAs(caller, () -> spec.callHandler().apply(null, request));
                 });
@@ -237,14 +245,17 @@ public class McpServerConfig {
         if (context != null && context.get(CALLER_CONTEXT_KEY) instanceof Caller caller) {
             return caller;
         }
-        return Caller.anonymous();
+        return null;
+    }
+
+    private static String sanitize(final String value) {
+        return value.replaceAll("[\\p{Cntrl}]", "?");
     }
 
     @SuppressWarnings("deprecation")
-    private static CallToolResult connectionNotFound(final String name, final ObjectMapper objectMapper) {
+    private static CallToolResult errorResult(final String message, final ObjectMapper objectMapper) {
         try {
-            final String json = objectMapper.writeValueAsString(
-                    Map.of("success", false, "error", "Connection profile not found: " + name));
+            final String json = objectMapper.writeValueAsString(Map.of("success", false, "error", message));
             return new CallToolResult(List.of(new TextContent(json)), true);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Cannot serialize error", e);

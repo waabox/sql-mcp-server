@@ -147,4 +147,26 @@ class HttpAuthenticationFilterIntegrationTest {
         assertEquals(200, response.statusCode());
     }
 
+    private HttpResponse<String> postToPath(final String rawPath) throws Exception {
+        return httpClient.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + rawPath))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(LIST_CONNECTIONS)).build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void whenCallingMcpThroughPublicPrefix_givenSharedTokenConfiguredAndNoToken_shouldNotReachTools()
+            throws Exception {
+        start("sql-mcp.http.auth-token=secret-token");
+
+        for (final String path : List.of("/oauth/../mcp", "/oauth/%2e%2e/mcp", "/oauth/..;/mcp",
+                "/.well-known/../mcp", "/oauth/unknown", "/.well-known/unknown")) {
+            final HttpResponse<String> response = postToPath(path);
+
+            assertTrue(response.statusCode() >= 400, path + " answered " + response.statusCode());
+            assertTrue(!response.body().contains("\"db\""), path + " leaked tools: " + response.body());
+        }
+    }
+
 }

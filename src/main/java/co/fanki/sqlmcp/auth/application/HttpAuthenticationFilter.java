@@ -20,12 +20,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Set;
 
 /**
  * Identifies the caller of every HTTP request and rejects the ones that cannot be identified.
  *
- * <p>Business rules: {@code /health}, {@code /.well-known/**} and {@code /oauth/**} are public. On every other
- * path: with no shared token configured and Google login disabled the server is open and the caller is
+ * <p>Business rules: {@code /health} and the OAuth and metadata endpoints this server publishes are public, matched
+ * exactly on the request path (a path that merely starts like one of them, or that contains dot segments, is not
+ * public). On every other path: with no shared token configured and Google login disabled the server is open and the caller is
  * anonymous (a warning is logged at startup); a bearer equal to the shared token identifies the shared-token
  * caller; when Google login is enabled a valid access token identifies the Google user; anything else is
  * rejected with 401 and a {@code WWW-Authenticate} header, which points at the protected resource metadata when
@@ -43,9 +45,15 @@ public class HttpAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpAuthenticationFilter.class);
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String HEALTH_PATH = "/health";
-    private static final String WELL_KNOWN_PREFIX = "/.well-known/";
-    private static final String OAUTH_PREFIX = "/oauth/";
+    private static final Set<String> PUBLIC_PATHS = Set.of(
+            "/health",
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-authorization-server",
+            "/oauth/register",
+            "/oauth/authorize",
+            "/oauth/google/callback",
+            "/oauth/consent",
+            "/oauth/token");
 
     private final byte[] sharedToken;
     private final boolean googleEnabled;
@@ -77,8 +85,7 @@ public class HttpAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(final HttpServletRequest request) {
-        final String path = request.getRequestURI();
-        return HEALTH_PATH.equals(path) || path.startsWith(WELL_KNOWN_PREFIX) || path.startsWith(OAUTH_PREFIX);
+        return PUBLIC_PATHS.contains(request.getRequestURI());
     }
 
     @Override
