@@ -148,6 +148,28 @@ class HttpTransportIntegrationTest {
     }
 
     @Test
+    void whenInitializing_givenNewerClientCapabilities_shouldIgnoreUnknownFields() throws Exception {
+        // Claude Code >= 2.1.281 advertises elicitation modes that MCP SDK 0.12.1 does not model.
+        String body = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":"2025-06-18",
+              "capabilities":{"elicitation":{"form":{},"url":{}}},
+              "clientInfo":{"name":"test","version":"0"}}}
+            """;
+        HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder(URI.create(baseUrl + "/mcp"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> message = objectMapper.readValue(response.body(), new TypeReference<>() { });
+        assertFalse(message.containsKey("error"), "initialize failed: " + response.body());
+        assertTrue(message.containsKey("result"));
+    }
+
+    @Test
     void whenInitializing_givenWrongToken_shouldFail() {
         McpSyncClient client = client("wrong-token");
         try {

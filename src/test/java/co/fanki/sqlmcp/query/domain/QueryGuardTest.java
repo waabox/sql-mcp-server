@@ -35,6 +35,10 @@ class QueryGuardTest {
         return guard.validate(query, DatabaseType.MYSQL);
     }
 
+    private ValidationResult redshift(final String query) {
+        return guard.validate(query, DatabaseType.REDSHIFT);
+    }
+
     // -------------------------------------------------------------------------
     // Legitimate debugging queries must pass
     // -------------------------------------------------------------------------
@@ -226,6 +230,45 @@ class QueryGuardTest {
     @Test
     void whenValidating_givenRejectedQuery_shouldExplainReason() {
         assertEquals("Multiple statements are not allowed", pg("SELECT 1; SELECT 2").error());
+    }
+
+    // -------------------------------------------------------------------------
+    // Redshift: conservative PostgreSQL-like lexing
+    // -------------------------------------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "SELECT * FROM events WHERE name = 'it''s'",
+            "SELECT \"order\" FROM sales",
+            "SELECT * FROM sales /* note */ WHERE id = 1",
+            "SELECT * FROM sales -- DELETE FROM sales\n WHERE id = 1"
+    })
+    void whenValidating_givenLegitimateRedshiftQuery_shouldAccept(final String query) {
+        ValidationResult result = redshift(query);
+        assertTrue(result.isValid(), () -> query + " -> " + result.error());
+    }
+
+    @Test
+    void whenValidating_givenRedshiftStringWithBackslash_shouldReject() {
+        ValidationResult result = redshift("SELECT 'a\\'' UNION SELECT 1 FROM t");
+
+        assertFalse(result.isValid());
+        assertTrue(result.error().contains("Backslash"), result::error);
+    }
+
+    @Test
+    void whenValidating_givenRedshiftBackticks_shouldNotHideTheirContent() {
+        assertFalse(redshift("SELECT `; DELETE FROM sales; ` FROM sales").isValid());
+    }
+
+    @Test
+    void whenValidating_givenRedshiftNestedLookingComment_shouldTreatCommentsAsNonNested() {
+        assertFalse(redshift("SELECT 1 /* /* */ ; DELETE FROM sales; -- */").isValid());
+    }
+
+    @Test
+    void whenValidating_givenRedshiftDollarQuotes_shouldNotHideTheirContent() {
+        assertFalse(redshift("SELECT $$ ; DELETE FROM sales; $$").isValid());
     }
 
 }

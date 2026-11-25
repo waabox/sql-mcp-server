@@ -21,6 +21,11 @@ public enum DatabaseType {
     MYSQL("com.mysql.cj.jdbc.Driver", "jdbc:mysql://%s:%d/%s"),
 
     /**
+     * Amazon Redshift data warehouse.
+     */
+    REDSHIFT("com.amazon.redshift.jdbc42.Driver", "jdbc:redshift://%s:%d/%s"),
+
+    /**
      * MariaDB database.
      */
     MARIADB("org.mariadb.jdbc.Driver", "jdbc:mariadb://%s:%d/%s"),
@@ -71,6 +76,7 @@ public enum DatabaseType {
         return switch (this) {
             case POSTGRESQL -> 5432;
             case MYSQL, MARIADB -> 3306;
+            case REDSHIFT -> 5439;
             case SQLITE -> 0;
         };
     }

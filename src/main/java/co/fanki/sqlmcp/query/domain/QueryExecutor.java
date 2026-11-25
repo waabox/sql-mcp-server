@@ -232,7 +232,7 @@ public class QueryExecutor {
     private static String quoteIdentifier(final DatabaseType type, final String identifier) {
         return switch (type) {
             case MYSQL, MARIADB -> "`" + identifier.replace("`", "``") + "`";
-            case POSTGRESQL, SQLITE -> "\"" + identifier.replace("\"", "\"\"") + "\"";
+            case POSTGRESQL, REDSHIFT, SQLITE -> "\"" + identifier.replace("\"", "\"\"") + "\"";
         };
     }
 

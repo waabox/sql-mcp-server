@@ -14,7 +14,7 @@
 
     <groupId>co.fanki</groupId>
     <artifactId>sql-mcp-server</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <name>sql-mcp-server</name>
     <description>MCP server that exposes SQL databases to LLMs</description>
 
@@ -22,6 +22,7 @@
         <java.version>21</java.version>
         <mcp-sdk.version>0.12.1</mcp-sdk.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
+        <redshift-jdbc.version>2.1.0.33</redshift-jdbc.version>
         <testcontainers.version>1.20.4</testcontainers.version>
     </properties>
 
@@ -107,6 +108,14 @@
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Amazon Redshift JDBC Driver -->
+        <dependency>
+            <groupId>com.amazon.redshift</groupId>
+            <artifactId>redshift-jdbc42</artifactId>
+            <version>${redshift-jdbc.version}</version>
             <scope>runtime</scope>
         </dependency>
 

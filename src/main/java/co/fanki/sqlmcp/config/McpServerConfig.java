@@ -5,6 +5,7 @@ import co.fanki.sqlmcp.auth.domain.Caller;
 import co.fanki.sqlmcp.auth.domain.ConnectionAccess;
 import co.fanki.sqlmcp.auth.domain.CurrentCaller;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -51,7 +52,7 @@ public class McpServerConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(McpServerConfig.class);
     private static final String SERVER_NAME = "sql-mcp-server";
-    private static final String SERVER_VERSION = "1.1.0";
+    private static final String SERVER_VERSION = "1.2.0";
     private static final String MCP_ENDPOINT = "/mcp";
     static final String CALLER_CONTEXT_KEY = "caller";
 
@@ -62,7 +63,8 @@ public class McpServerConfig {
      */
     @Bean
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        // Claude Code sends newer capability fields (e.g. elicitation.form) unknown to MCP SDK 0.12.1
+        return new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     // =========================================================================
@@ -194,24 +196,27 @@ public class McpServerConfig {
      * a connection the caller may not use is rejected with the same error as an unknown connection.
      *
      * @param transport the Streamable HTTP transport
+     * @param objectMapper the ObjectMapper used to parse request params and serialize errors
      * @param tools the list of tool specifications to register
      * @param connectionAccess decides which connections a caller may use
-     * @param objectMapper the ObjectMapper for JSON serialization
      * @return the configured MCP server
      */
     @Bean
     @ConditionalOnProperty(name = "sql-mcp.transport", havingValue = "http", matchIfMissing = true)
     public McpStatelessSyncServer httpMcpServer(
             final WebMvcStatelessServerTransport transport,
+            final ObjectMapper objectMapper,
             final List<McpServerFeatures.SyncToolSpecification> tools,
-            final ConnectionAccess connectionAccess,
-            final ObjectMapper objectMapper) {
+            final ConnectionAccess connectionAccess) {
 
         List<McpStatelessServerFeatures.SyncToolSpecification> statelessTools = tools.stream()
                 .map(spec -> toStateless(spec, connectionAccess, objectMapper))
                 .toList();
 
+        // The stateless server parses request params (e.g. initialize) with its own
+        // mapper, which defaults to a strict one; pass ours so unknown fields are ignored.
         return McpServer.sync(transport)
+                .objectMapper(objectMapper)
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
                 .capabilities(ServerCapabilities.builder().tools(true).build())
                 .tools(statelessTools)
