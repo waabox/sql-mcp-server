@@ -94,6 +94,7 @@ class OAuthFlowIntegrationTest {
                 "spring.main.web-application-type=servlet",
                 "sql-mcp.connections[0].name=analytics",
                 "sql-mcp.connections[1].name=billing",
+                "sql-mcp.http.auth-token=shared-secret",
                 "sql-mcp.access[0].group=data@example.com",
                 "sql-mcp.access[0].connections[0]=analytics",
                 "sql-mcp.auth.issuer=" + issuer,
@@ -138,13 +139,17 @@ class OAuthFlowIntegrationTest {
     }
 
     private String idToken() throws Exception {
+        return idToken("example.com");
+    }
+
+    private String idToken(final String hostedDomain) throws Exception {
         final Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("iss", "https://accounts.google.com");
         claims.put("aud", "google-client-id");
         claims.put("exp", Instant.now().getEpochSecond() + 3600);
         claims.put("email", "ana@example.com");
         claims.put("email_verified", true);
-        claims.put("hd", "example.com");
+        claims.put("hd", hostedDomain);
         final Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
         return encoder.encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8)) + "."
                 + encoder.encodeToString(MAPPER.writeValueAsBytes(claims)) + ".sig";
@@ -395,6 +400,149 @@ class OAuthFlowIntegrationTest {
 
         assertTrue(appender.list.stream().anyMatch(event -> event.getFormattedMessage()
                 .contains("\"clientInfo\":\"ana@example.com\"")), appender.list.toString());
+    }
+
+    private HttpResponse<String> postJson(final String path, final String json) throws Exception {
+        return http.send(HttpRequest.newBuilder(URI.create(issuer + path))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private String authorizeLocationState(final String clientId) throws Exception {
+        final HttpResponse<String> authorize = httpGet(authorizePath(clientId, REDIRECT_URI));
+        return queryOf(authorize.headers().firstValue("Location").orElseThrow()).get("state");
+    }
+
+    @Test
+    void whenConsenting_givenPreLoginStateWithoutEmail_shouldReturn400AndNoCode() throws Exception {
+        final String preLoginState = authorizeLocationState(register());
+
+        final HttpResponse<String> response = postForm("/oauth/consent",
+                Map.of("login_state", preLoginState, "decision", "approve"));
+
+        assertEquals(400, response.statusCode());
+        assertTrue(response.headers().firstValue("Location").isEmpty());
+    }
+
+    @Test
+    void whenGoogleCallback_givenIdentityOutsideAllowedDomains_shouldReturn403() throws Exception {
+        google.stubFor(post(urlPathEqualTo("/google-token")).willReturn(json(
+                "{\"id_token\":\"" + idToken("other.com") + "\"}")));
+        final String state = authorizeLocationState(register());
+
+        final HttpResponse<String> callback = httpGet("/oauth/google/callback?code=google-code&state=" + enc(state));
+
+        assertEquals(403, callback.statusCode());
+        assertFalse(callback.body().contains("login_state"), callback.body());
+    }
+
+    @Test
+    void whenAuthorizing_givenMissingOrPlainCodeChallenge_shouldRenderErrorPageWithoutRedirect() throws Exception {
+        final String clientId = register();
+        final String base = "/oauth/authorize?response_type=code&client_id=" + enc(clientId)
+                + "&redirect_uri=" + enc(REDIRECT_URI) + "&state=s";
+
+        final HttpResponse<String> missing = httpGet(base);
+        final HttpResponse<String> plain = httpGet(base + "&code_challenge=" + enc(challenge())
+                + "&code_challenge_method=plain");
+        final HttpResponse<String> malformed = httpGet(base + "&code_challenge=short&code_challenge_method=S256");
+
+        for (final HttpResponse<String> response : List.of(missing, plain, malformed)) {
+            assertEquals(400, response.statusCode());
+            assertTrue(response.headers().firstValue("Location").isEmpty());
+        }
+    }
+
+    @Test
+    void whenAuthorizing_givenUnsupportedResponseType_shouldRenderErrorPageWithoutRedirect() throws Exception {
+        final String clientId = register();
+
+        final HttpResponse<String> response = httpGet("/oauth/authorize?response_type=token&client_id="
+                + enc(clientId) + "&redirect_uri=" + enc(REDIRECT_URI) + "&code_challenge=" + enc(challenge())
+                + "&code_challenge_method=S256");
+
+        assertEquals(400, response.statusCode());
+        assertTrue(response.headers().firstValue("Location").isEmpty());
+    }
+
+    @Test
+    void whenRegistering_givenInvalidRedirectUri_shouldReturn400InvalidRedirectUri() throws Exception {
+        for (final String uri : List.of("http://evil.example/cb", "javascript:alert(1)", "https://a.example/cb#x",
+                "https://user@a.example/cb")) {
+            final HttpResponse<String> response = postJson("/oauth/register",
+                    "{\"client_name\":\"x\",\"redirect_uris\":[\"" + uri + "\"]}");
+
+            assertEquals(400, response.statusCode(), uri);
+            assertEquals("invalid_redirect_uri", MAPPER.readTree(response.body()).get("error").asText());
+        }
+    }
+
+    @Test
+    void whenRegistering_givenOversizedRegistration_shouldReject() throws Exception {
+        final String sixUris = "[\"https://a.example/1\",\"https://a.example/2\",\"https://a.example/3\","
+                + "\"https://a.example/4\",\"https://a.example/5\",\"https://a.example/6\"]";
+        final String longUri = "[\"https://a.example/" + "x".repeat(250) + "\"]";
+
+        final HttpResponse<String> tooMany = postJson("/oauth/register",
+                "{\"client_name\":\"x\",\"redirect_uris\":" + sixUris + "}");
+        final HttpResponse<String> tooLong = postJson("/oauth/register",
+                "{\"client_name\":\"x\",\"redirect_uris\":" + longUri + "}");
+        final HttpResponse<String> longName = postJson("/oauth/register",
+                "{\"client_name\":\"" + "n".repeat(101) + "\",\"redirect_uris\":[\"https://a.example/1\"]}");
+
+        assertEquals(400, tooMany.statusCode());
+        assertEquals(400, tooLong.statusCode());
+        assertEquals(400, longName.statusCode());
+        assertEquals("invalid_client_metadata", MAPPER.readTree(longName.body()).get("error").asText());
+    }
+
+    @Test
+    void whenExchangingCode_givenMalformedCodeVerifier_shouldReturnInvalidGrant() throws Exception {
+        final String clientId = register();
+        final String code = approve(reachConsent(clientId));
+
+        final HttpResponse<String> response = exchange(clientId, code, "short");
+
+        assertEquals(400, response.statusCode());
+        assertEquals("invalid_grant", MAPPER.readTree(response.body()).get("error").asText());
+    }
+
+    @Test
+    void whenRefreshing_givenNoClientIdOrWrongClientId_shouldReturn400() throws Exception {
+        final String clientId = register();
+        final String code = approve(reachConsent(clientId));
+        final String refresh = MAPPER.readTree(exchange(clientId, code, VERIFIER).body()).get("refresh_token").asText();
+
+        final HttpResponse<String> missing = postForm("/oauth/token",
+                Map.of("grant_type", "refresh_token", "refresh_token", refresh));
+        final HttpResponse<String> wrong = postForm("/oauth/token",
+                Map.of("grant_type", "refresh_token", "refresh_token", refresh, "client_id", register() + "x"));
+
+        assertEquals(400, missing.statusCode());
+        assertEquals(400, wrong.statusCode());
+    }
+
+    @Test
+    void whenCallingMcp_givenRefreshTokenAsBearer_shouldReturn401() throws Exception {
+        final String clientId = register();
+        final String code = approve(reachConsent(clientId));
+        final String refresh = MAPPER.readTree(exchange(clientId, code, VERIFIER).body()).get("refresh_token").asText();
+
+        assertEquals(401, callTool(refresh, "list_connections", "{}").statusCode());
+    }
+
+    @Test
+    void whenCallingMcp_givenSharedTokenWhileGoogleEnabled_shouldListEveryConnection() throws Exception {
+        final HttpResponse<String> list = callTool("shared-secret", "list_connections", "{}");
+
+        assertEquals(200, list.statusCode(), list.body());
+        assertTrue(list.body().contains("analytics"), list.body());
+        assertTrue(list.body().contains("billing"), list.body());
+    }
+
+    @Test
+    void whenCallingMcp_givenWrongBearerWhileBothModesEnabled_shouldReturn401() throws Exception {
+        assertEquals(401, callTool("not-the-secret", "list_connections", "{}").statusCode());
     }
 
     @Test

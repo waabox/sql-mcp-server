@@ -70,6 +70,26 @@ public class GoogleLogin {
     }
 
     /**
+     * Tells whether the domain of an email is in {@code allowed-domains}.
+     *
+     * <p>Business rule: used to re-check a returning user (refresh grant); the comparison is case-insensitive and an
+     * empty {@code allowed-domains} allows nobody.
+     *
+     * @param email the email
+     * @return true when the domain of the email is allowed
+     */
+    public boolean allowsEmailDomain(final String email) {
+        if (email == null) {
+            return false;
+        }
+        final int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        return allowedDomains.contains(email.substring(at + 1).strip().toLowerCase(Locale.ROOT));
+    }
+
+    /**
      * Builds the URL that sends the user to Google to log in.
      *
      * <p>Business rule: when exactly one domain is allowed it is passed as the {@code hd} hint.

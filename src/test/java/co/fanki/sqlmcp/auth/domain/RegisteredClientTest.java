@@ -56,4 +56,33 @@ class RegisteredClientTest {
         assertFalse(code.matchesVerifier("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXj"));
     }
 
+    @Test
+    void whenRegistering_givenUriWithUserInfo_shouldReject() {
+        assertFalse(RegisteredClient.isAcceptableRedirectUri("https://user:pw@app.example.com/cb"));
+        assertFalse(RegisteredClient.isAcceptableRedirectUri("http://user@localhost/cb"));
+    }
+
+    @Test
+    void whenMatchingRedirect_givenRequestedUriWithFragmentOrUserInfo_shouldReject() {
+        final RegisteredClient client = RegisteredClient.of("c", List.of("http://localhost:8123/cb"));
+
+        assertFalse(client.allows("http://localhost:51000/cb#x"));
+        assertFalse(client.allows("http://user@localhost:51000/cb"));
+    }
+
+    @Test
+    void whenCheckingPkceValue_givenUnreservedCharactersOfAllowedLength_shouldAccept() {
+        assertTrue(AuthorizationCode.isPkceValue("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"));
+        assertTrue(AuthorizationCode.isPkceValue("a".repeat(128)));
+    }
+
+    @Test
+    void whenCheckingPkceValue_givenTooShortTooLongOrReservedCharacters_shouldReject() {
+        assertFalse(AuthorizationCode.isPkceValue("a".repeat(42)));
+        assertFalse(AuthorizationCode.isPkceValue("a".repeat(129)));
+        assertFalse(AuthorizationCode.isPkceValue("a".repeat(42) + "!"));
+        assertFalse(AuthorizationCode.isPkceValue("a".repeat(42) + " "));
+        assertFalse(AuthorizationCode.isPkceValue(null));
+    }
+
 }

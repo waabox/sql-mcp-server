@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for {@link GoogleLogin} identity validation.
@@ -95,6 +97,17 @@ class GoogleLoginTest {
         claims.put("iss", "https://evil.example");
 
         assertThrows(GoogleLoginException.class, () -> login(List.of("example.com")).validateIdToken(claims));
+    }
+
+    @Test
+    void whenCheckingEmailDomain_givenAllowedAndRemovedDomains_shouldAcceptOnlyAllowed() {
+        final GoogleLogin login = login(List.of("Example.com"));
+
+        assertTrue(login.allowsEmailDomain("ana@example.com"));
+        assertTrue(login.allowsEmailDomain("ANA@EXAMPLE.COM"));
+        assertFalse(login.allowsEmailDomain("ana@other.com"));
+        assertFalse(login.allowsEmailDomain("ana"));
+        assertFalse(login(List.of()).allowsEmailDomain("ana@example.com"));
     }
 
 }

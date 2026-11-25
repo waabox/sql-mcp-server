@@ -48,8 +48,8 @@ import java.util.Map;
 public class OAuthController {
 
     private static final Logger LOG = LoggerFactory.getLogger(OAuthController.class);
-    private static final int MAX_REDIRECT_URIS = 10;
-    private static final int MAX_FIELD_LENGTH = 2000;
+    private static final int MAX_REDIRECT_URIS = 5;
+    private static final int MAX_URI_LENGTH = 255;
     private static final int MAX_NAME_LENGTH = 100;
 
     private final TokenService tokens;
@@ -71,6 +71,7 @@ public class OAuthController {
      *
      * @param request the registration request with {@code redirect_uris} and an optional {@code client_name}
      * @return 201 with the client id, or 400 {@code invalid_redirect_uri} / {@code invalid_client_metadata}
+     *     (more than 5 redirect URIs, a URI over 255 characters, or a client name over 100 characters)
      */
     @PostMapping(value = "/oauth/register", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> register(@RequestBody final Map<String, Object> request) {
@@ -80,16 +81,21 @@ public class OAuthController {
         }
         final List<String> redirectUris = new ArrayList<>();
         for (final Object item : list) {
-            if (!(item instanceof String uri) || uri.length() > MAX_FIELD_LENGTH
+            if (!(item instanceof String uri) || uri.length() > MAX_URI_LENGTH
                     || !RegisteredClient.isAcceptableRedirectUri(uri)) {
                 return error(HttpStatus.BAD_REQUEST, "invalid_redirect_uri");
             }
             redirectUris.add(uri);
         }
         final Object requestedName = request.get("client_name");
-        final String name = requestedName instanceof String text && !text.isBlank()
-                ? text.strip().substring(0, Math.min(text.strip().length(), MAX_NAME_LENGTH))
+        if (requestedName != null && !(requestedName instanceof String)) {
+            return error(HttpStatus.BAD_REQUEST, "invalid_client_metadata");
+        }
+        final String name = requestedName instanceof String text && !text.isBlank() ? text.strip()
                 : "Unnamed client";
+        if (name.length() > MAX_NAME_LENGTH) {
+            return error(HttpStatus.BAD_REQUEST, "invalid_client_metadata");
+        }
         final String clientId = tokens.registerClient(RegisteredClient.of(name, redirectUris));
         final Map<String, Object> body = new LinkedHashMap<>();
         body.put("client_id", clientId);
@@ -110,8 +116,8 @@ public class OAuthController {
      * @param codeChallenge the PKCE challenge
      * @param codeChallengeMethod must be {@code S256}
      * @param state the opaque client state returned unchanged
-     * @return a 400 page when the client or redirect URI is invalid, otherwise a redirect to Google or (for the
-     *     other invalid parameters) to the client with an error
+     * @return a 400 page when the client, the redirect URI, the response type or the PKCE parameters are invalid
+     *     (the client is never redirected on an invalid request), otherwise a redirect to Google
      */
     @GetMapping("/oauth/authorize")
     public ResponseEntity<String> authorize(
@@ -134,10 +140,11 @@ public class OAuthController {
             return page(HttpStatus.BAD_REQUEST, "Invalid request", "The redirect URI is not registered.");
         }
         if (!"code".equals(responseType)) {
-            return redirect(redirectUri, error("unsupported_response_type", state));
+            return page(HttpStatus.BAD_REQUEST, "Invalid request", "Only response_type=code is supported.");
         }
-        if (codeChallenge == null || codeChallenge.isBlank() || !"S256".equals(codeChallengeMethod)) {
-            return redirect(redirectUri, error("invalid_request", state));
+        if (!AuthorizationCode.isPkceValue(codeChallenge) || !"S256".equals(codeChallengeMethod)) {
+            return page(HttpStatus.BAD_REQUEST, "Invalid request",
+                    "A PKCE code_challenge with code_challenge_method=S256 is required.");
         }
         final String loginState = tokens.issueLoginState(LoginState.of(clientId, redirectUri, state, codeChallenge));
         return redirect(googleLogin.authorizationUrl(loginState));
@@ -214,7 +221,8 @@ public class OAuthController {
     /**
      * The token endpoint: exchanges an authorization code or a refresh token for new tokens.
      *
-     * @param form the form fields of the request
+     * @param form the form fields of the request; a refresh grant must send the {@code client_id} the token was
+     *     issued to, and the email's domain must still be in {@code allowed-domains}
      * @return the tokens, or a 400 JSON error ({@code invalid_request}, {@code invalid_grant},
      *     {@code unsupported_grant_type})
      */
@@ -238,6 +246,9 @@ public class OAuthController {
         if (code == null || redirectUri == null || clientId == null || verifier == null) {
             return error(HttpStatus.BAD_REQUEST, "invalid_request");
         }
+        if (!AuthorizationCode.isPkceValue(verifier)) {
+            return error(HttpStatus.BAD_REQUEST, "invalid_grant");
+        }
         final AuthorizationCode redeemed;
         try {
             redeemed = tokens.redeemAuthorizationCode(code);
@@ -253,7 +264,8 @@ public class OAuthController {
 
     private ResponseEntity<Map<String, Object>> refresh(final Map<String, String> form) {
         final String refreshToken = form.get("refresh_token");
-        if (refreshToken == null) {
+        final String clientId = form.get("client_id");
+        if (refreshToken == null || clientId == null) {
             return error(HttpStatus.BAD_REQUEST, "invalid_request");
         }
         final RefreshGrant grant;
@@ -262,8 +274,7 @@ public class OAuthController {
         } catch (InvalidTokenException e) {
             return error(HttpStatus.BAD_REQUEST, "invalid_grant");
         }
-        final String clientId = form.get("client_id");
-        if (clientId != null && !clientId.equals(grant.clientId())) {
+        if (!clientId.equals(grant.clientId()) || !googleLogin.allowsEmailDomain(grant.email())) {
             return error(HttpStatus.BAD_REQUEST, "invalid_grant");
         }
         return tokenResponse(tokens.issueTokens(grant.email(), grant.clientId()));

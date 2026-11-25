@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * The contents of an OAuth authorization code.
@@ -14,6 +15,8 @@ import java.util.Objects;
  * @author waabox(emiliano[at]fanki[dot]co)
  */
 public final class AuthorizationCode {
+
+    private static final Pattern PKCE_VALUE = Pattern.compile("[A-Za-z0-9\\-._~]{43,128}");
 
     private final String email;
     private final String clientId;
@@ -51,6 +54,18 @@ public final class AuthorizationCode {
         Objects.requireNonNull(redirectUri, "redirectUri must not be null");
         Objects.requireNonNull(codeChallenge, "codeChallenge must not be null");
         return new AuthorizationCode(email, clientId, redirectUri, codeChallenge);
+    }
+
+    /**
+     * Tells whether a PKCE code challenge or verifier has a valid format.
+     *
+     * <p>Business rule: RFC 7636 requires 43 to 128 unreserved characters ({@code A-Z a-z 0-9 - . _ ~}).
+     *
+     * @param value the code challenge or code verifier; may be null
+     * @return true when it has a valid format
+     */
+    public static boolean isPkceValue(final String value) {
+        return value != null && PKCE_VALUE.matcher(value).matches();
     }
 
     /**

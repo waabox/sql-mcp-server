@@ -191,4 +191,20 @@ class HttpAuthenticationFilterIntegrationTest {
         assertEquals(401, post(INITIALIZE, null).statusCode());
     }
 
+    @Test
+    void whenCallingMcp_givenGoogleOnlyAndSharedTokenShapedBearer_shouldReturn401() throws Exception {
+        final int issuerPort = freePort();
+        startOnPort(issuerPort,
+                "sql-mcp.auth.issuer=http://localhost:" + issuerPort,
+                "sql-mcp.auth.signing-key=0123456789abcdef0123456789abcdef",
+                "sql-mcp.auth.google.enabled=true",
+                "sql-mcp.auth.google.client-id=client-id",
+                "sql-mcp.auth.google.client-secret=client-secret",
+                "sql-mcp.auth.google.allowed-domains=example.com",
+                "sql-mcp.auth.google.service-account-key={}",
+                "sql-mcp.auth.google.admin-email=admin@example.com");
+
+        assertEquals(401, post(INITIALIZE, "secret-token").statusCode());
+    }
+
 }

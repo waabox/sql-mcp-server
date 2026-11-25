@@ -57,14 +57,15 @@ public final class RegisteredClient {
      * Tells whether a redirect URI may be registered.
      *
      * <p>Business rule: only {@code https://} URIs and {@code http://} loopback URIs ({@code localhost},
-     * {@code 127.0.0.1}) without a fragment are accepted.
+     * {@code 127.0.0.1}) without a fragment or user info are accepted.
      *
      * @param uri the redirect URI
      * @return true when it may be registered
      */
     public static boolean isAcceptableRedirectUri(final String uri) {
         final URI parsed = parse(uri);
-        if (parsed == null || parsed.getHost() == null || parsed.getRawFragment() != null) {
+        if (parsed == null || parsed.getHost() == null || parsed.getRawFragment() != null
+                || parsed.getRawUserInfo() != null) {
             return false;
         }
         return "https".equals(parsed.getScheme()) || isLoopback(parsed);
@@ -74,19 +75,22 @@ public final class RegisteredClient {
      * Tells whether a requested redirect URI matches one of the registered ones.
      *
      * <p>Business rule: the match is exact, except that a loopback URI may use a different port than the
-     * registered one (RFC 8252).
+     * registered one (RFC 8252). A requested URI with a fragment or user info is never allowed.
      *
      * @param requested the redirect URI of the authorization request
      * @return true when it is allowed
      */
     public boolean allows(final String requested) {
         final URI wanted = parse(requested);
+        if (wanted == null || wanted.getRawFragment() != null || wanted.getRawUserInfo() != null) {
+            return false;
+        }
         for (final String registered : redirectUris) {
             if (registered.equals(requested)) {
                 return true;
             }
             final URI known = parse(registered);
-            if (wanted != null && known != null && isLoopback(known) && isLoopback(wanted)
+            if (known != null && isLoopback(known) && isLoopback(wanted)
                     && Objects.equals(known.getHost(), wanted.getHost())
                     && Objects.equals(known.getRawPath(), wanted.getRawPath())
                     && Objects.equals(known.getRawQuery(), wanted.getRawQuery())) {
