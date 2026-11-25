@@ -52,7 +52,7 @@ public class McpServerConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(McpServerConfig.class);
     private static final String SERVER_NAME = "sql-mcp-server";
-    private static final String SERVER_VERSION = "1.3.1";
+    private static final String SERVER_VERSION = "1.4.0";
     private static final String MCP_ENDPOINT = "/mcp";
     static final String CALLER_CONTEXT_KEY = "caller";
 
